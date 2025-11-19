@@ -35,22 +35,30 @@ class MCPServer:
         """Handle incoming MCP requests"""
         method = request.get("method")
         params = request.get("params", {})
-        
+        request_id = request.get("id")
+
         if method == "initialize":
             return {
-                "protocolVersion": "0.1.0",
-                "serverInfo": {
-                    "name": "rdl-mcp-server",
-                    "version": "1.0.0"
-                },
-                "capabilities": {
-                    "tools": {}
+                "jsonrpc": "2.0",
+                "id": request_id,
+                "result": {
+                    "protocolVersion": "2024-11-05",
+                    "serverInfo": {
+                        "name": "rdl-mcp-server",
+                        "version": "1.0.0"
+                    },
+                    "capabilities": {
+                        "tools": {}
+                    }
                 }
             }
         
         elif method == "tools/list":
             return {
-                "tools": [
+                "jsonrpc": "2.0",
+                "id": request_id,
+                "result": {
+                    "tools": [
                     {
                         "name": "describe_rdl_report",
                         "description": "Get a high-level summary of the RDL report structure including datasets, parameters, and table layout",
@@ -174,8 +182,9 @@ class MCPServer:
                         }
                     }
                 ]
+                }
             }
-        
+
         elif method == "tools/call":
             tool_name = params.get("name")
             tool_args = params.get("arguments", {})
@@ -184,25 +193,44 @@ class MCPServer:
                 try:
                     result = self.tools[tool_name](**tool_args)
                     return {
-                        "content": [
-                            {
-                                "type": "text",
-                                "text": json.dumps(result, indent=2)
-                            }
-                        ]
+                        "jsonrpc": "2.0",
+                        "id": request_id,
+                        "result": {
+                            "content": [
+                                {
+                                    "type": "text",
+                                    "text": json.dumps(result, indent=2)
+                                }
+                            ]
+                        }
                     }
                 except Exception as e:
                     return {
-                        "content": [
-                            {
-                                "type": "text",
-                                "text": f"Error: {str(e)}"
-                            }
-                        ],
-                        "isError": True
+                        "jsonrpc": "2.0",
+                        "id": request_id,
+                        "error": {
+                            "code": -32000,
+                            "message": f"Error: {str(e)}"
+                        }
                     }
-        
-        return {"error": "Unknown method"}
+            else:
+                return {
+                    "jsonrpc": "2.0",
+                    "id": request_id,
+                    "error": {
+                        "code": -32601,
+                        "message": f"Tool not found: {tool_name}"
+                    }
+                }
+
+        return {
+            "jsonrpc": "2.0",
+            "id": request_id,
+            "error": {
+                "code": -32601,
+                "message": f"Unknown method: {method}"
+            }
+        }
     
     # ===== RDL Tool Implementations =====
     
