@@ -28,6 +28,7 @@ class MCPServer:
             "update_stored_procedure": self.update_stored_procedure,
             "add_parameter": self.add_parameter,
             "update_parameter": self.update_parameter,
+            "add_column": self.add_column,
             "validate_rdl": self.validate_rdl,
         }
     
@@ -168,6 +169,22 @@ class MCPServer:
                                 "default_value": {"type": "string", "description": "New default value"}
                             },
                             "required": ["filepath", "name"]
+                        }
+                    },
+                    {
+                        "name": "add_column",
+                        "description": "Add a new column to the report table at a specified position",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "filepath": {"type": "string", "description": "Path to the RDL file"},
+                                "column_index": {"type": "integer", "description": "Position to insert column (0-based, -1 for end)"},
+                                "header_text": {"type": "string", "description": "Header text for the column"},
+                                "field_binding": {"type": "string", "description": "Field binding expression (e.g., '=Fields!Amount.Value')"},
+                                "width": {"type": "string", "description": "Column width (e.g., '1.5in', '3cm'). Defaults to '1in'"},
+                                "format_string": {"type": "string", "description": "Optional format string (e.g., '#,0.00' for numbers or 'dd/MM/yyyy' for dates)"}
+                            },
+                            "required": ["filepath", "column_index", "header_text", "field_binding"]
                         }
                     },
                     {
@@ -383,58 +400,374 @@ class MCPServer:
         """Get table column information"""
         root = self._parse_rdl(filepath)
         ns = self._get_namespace(root)
-        
+
         tablix = root.find(f'.//{ns}Tablix')
         if tablix is None:
             return {'error': 'No Tablix (table) found in report'}
-        
+
         # Get column widths
         widths = []
         for col in tablix.findall(f'.//{ns}TablixColumn'):
             width = col.find(f'{ns}Width').text if col.find(f'{ns}Width') is not None else 'Unknown'
             widths.append(width)
-        
-        # Get header row (usually the first or second row with header text)
-        columns = []
-        header_rows = tablix.findall(f'.//{ns}TablixRow')
-        
-        # Find the header row (usually has bold text and "header" style content)
-        header_cells = []
-        for row in header_rows:
+
+        # Get all rows
+        all_rows = tablix.findall(f'.//{ns}TablixRow')
+
+        # Find the actual column header row and data row
+        # We look for:
+        # 1. A row with static text (headers) - but prefer one with multiple headers
+        # 2. A row with data bindings (=Fields!...)
+        header_row = None
+        data_row = None
+        best_header_count = 0
+
+        for row_idx, row in enumerate(all_rows):
             cells = row.findall(f'{ns}TablixCells/{ns}TablixCell')
-            if cells:
-                # Check if this looks like a header row (has TextRun values that don't start with =)
-                first_cell = cells[0] if cells else None
-                if first_cell is not None:
+            if not cells:
+                continue
+
+            # Count how many cells have static text (potential headers)
+            static_text_count = 0
+            data_binding_count = 0
+
+            for cell in cells:
+                textrun = cell.find(f'.//{ns}TextRun/{ns}Value')
+                if textrun is not None and textrun.text:
+                    text = textrun.text.strip()
+                    if text.startswith('='):
+                        data_binding_count += 1
+                    elif text:  # Non-empty static text
+                        static_text_count += 1
+
+            # If this row has more static headers than previous best, it's likely the real header row
+            if static_text_count > best_header_count and static_text_count >= len(cells) * 0.5:
+                header_row = row
+                best_header_count = static_text_count
+
+            # Data row is the one with mostly data bindings
+            if data_binding_count >= len(cells) * 0.5 and data_row is None:
+                data_row = row
+
+        # If we didn't find a clear header row, fall back to first row with static text
+        if header_row is None:
+            for row in all_rows:
+                cells = row.findall(f'{ns}TablixCells/{ns}TablixCell')
+                if cells:
+                    first_cell = cells[0]
                     textrun = first_cell.find(f'.//{ns}TextRun/{ns}Value')
                     if textrun is not None and textrun.text and not textrun.text.startswith('='):
-                        header_cells = cells
+                        header_row = row
                         break
-        
-        # Extract header information
-        for idx, cell in enumerate(header_cells):
-            textbox = cell.find(f'.//{ns}Textbox')
-            textbox_name = textbox.get('Name') if textbox is not None else f'Unknown_{idx}'
-            
-            # Get header text
-            textrun = cell.find(f'.//{ns}TextRun/{ns}Value')
-            header_text = textrun.text if textrun is not None and textrun.text else 'Unknown'
-            
-            # Skip if it's a data binding (starts with =)
-            if header_text.startswith('='):
-                continue
-            
-            width = widths[idx] if idx < len(widths) else 'Unknown'
-            
-            columns.append({
-                'index': idx,
-                'header': header_text,
-                'width': width,
-                'textbox_name': textbox_name
-            })
-        
+
+        # Extract column information
+        columns = []
+
+        if header_row is not None:
+            header_cells = header_row.findall(f'{ns}TablixCells/{ns}TablixCell')
+            data_cells = data_row.findall(f'{ns}TablixCells/{ns}TablixCell') if data_row is not None else []
+
+            for idx, cell in enumerate(header_cells):
+                textbox = cell.find(f'.//{ns}Textbox')
+                textbox_name = textbox.get('Name') if textbox is not None else f'Unknown_{idx}'
+
+                # Get header text
+                textrun = cell.find(f'.//{ns}TextRun/{ns}Value')
+                header_text = textrun.text if textrun is not None and textrun.text else ''
+                header_text = header_text.strip()
+
+                # Skip if it's a data binding (starts with =)
+                if header_text.startswith('='):
+                    header_text = ''
+
+                # Get field binding from data row if available
+                field_binding = None
+                field_name = None
+                format_string = None
+
+                if idx < len(data_cells):
+                    data_cell = data_cells[idx]
+                    data_textrun = data_cell.find(f'.//{ns}TextRun/{ns}Value')
+                    if data_textrun is not None and data_textrun.text:
+                        binding = data_textrun.text.strip()
+                        if binding.startswith('='):
+                            field_binding = binding
+                            # Extract field name from =Fields!FieldName.Value pattern
+                            if 'Fields!' in binding:
+                                try:
+                                    field_name = binding.split('Fields!')[1].split('.')[0]
+                                except:
+                                    pass
+
+                    # Get format string
+                    format_elem = data_cell.find(f'.//{ns}TextRun/{ns}Style/{ns}Format')
+                    if format_elem is not None and format_elem.text:
+                        format_string = format_elem.text
+
+                width = widths[idx] if idx < len(widths) else 'Unknown'
+
+                column_info = {
+                    'index': idx,
+                    'header': header_text if header_text else '(Empty)',
+                    'width': width,
+                    'textbox_name': textbox_name
+                }
+
+                if field_binding:
+                    column_info['field_binding'] = field_binding
+                if field_name:
+                    column_info['field_name'] = field_name
+                if format_string:
+                    column_info['format'] = format_string
+
+                columns.append(column_info)
+
         return {'columns': columns}
-    
+
+    def add_column(self, filepath: str, column_index: int, header_text: str,
+                   field_binding: str, width: str = "1in",
+                   format_string: Optional[str] = None) -> Dict[str, Any]:
+        """Add a new column to the report table at specified position"""
+        tree = ET.parse(filepath)
+        root = tree.getroot()
+        ns = self._get_namespace(root)
+
+        # Find the Tablix
+        tablix = root.find(f'.//{ns}Tablix')
+        if tablix is None:
+            return {'success': False, 'message': 'No Tablix (table) found in report'}
+
+        # Get current columns
+        tablix_body = tablix.find(f'{ns}TablixBody')
+        tablix_columns = tablix_body.find(f'{ns}TablixColumns')
+        current_column_count = len(tablix_columns.findall(f'{ns}TablixColumn'))
+
+        # Validate and normalize column_index
+        if column_index == -1:
+            column_index = current_column_count  # Append at end
+        elif column_index < 0 or column_index > current_column_count:
+            return {'success': False, 'message': f'Invalid column_index: {column_index}. Valid range: 0-{current_column_count} or -1'}
+
+        # Generate unique textbox name
+        import time
+        timestamp = int(time.time() * 1000) % 100000
+        textbox_name_base = f"Textbox_Col_{timestamp}"
+
+        # Step 1: Add TablixColumn with width
+        new_tablix_column = ET.Element(f'{ns}TablixColumn')
+        width_elem = ET.SubElement(new_tablix_column, f'{ns}Width')
+        width_elem.text = width
+
+        # Insert at the right position
+        tablix_columns.insert(column_index, new_tablix_column)
+
+        # Step 2: Add cells to each row
+        tablix_rows = tablix_body.find(f'{ns}TablixRows')
+        all_rows = tablix_rows.findall(f'{ns}TablixRow')
+
+        for row_idx, row in enumerate(all_rows):
+            tablix_cells = row.find(f'{ns}TablixCells')
+            if tablix_cells is None:
+                continue
+
+            # Detect row type
+            cells = tablix_cells.findall(f'{ns}TablixCell')
+            row_type = self._detect_row_type(cells, ns)
+
+            # Create appropriate cell based on row type
+            new_cell = self._create_table_cell(
+                ns, row_type, row_idx, column_index,
+                header_text, field_binding, format_string, textbox_name_base
+            )
+
+            # Insert at the right position
+            tablix_cells.insert(column_index, new_cell)
+
+        # Step 3: Add TablixMember to TablixColumnHierarchy
+        column_hierarchy = tablix.find(f'{ns}TablixColumnHierarchy')
+        if column_hierarchy is not None:
+            tablix_members = column_hierarchy.find(f'{ns}TablixMembers')
+            if tablix_members is not None:
+                new_member = ET.Element(f'{ns}TablixMember')
+                tablix_members.insert(column_index, new_member)
+
+        # Step 4: Update total width
+        self._update_tablix_width(tablix, ns)
+
+        # Write back to file
+        self._write_xml(tree, filepath)
+
+        return {
+            'success': True,
+            'message': f'Added column "{header_text}" at position {column_index}',
+            'details': {
+                'column_index': column_index,
+                'header_text': header_text,
+                'field_binding': field_binding,
+                'width': width,
+                'total_columns': current_column_count + 1
+            }
+        }
+
+    def _detect_row_type(self, cells: List[ET.Element], ns: str) -> str:
+        """Detect the type of row (header, data, footer, etc.)"""
+        if not cells:
+            return 'empty'
+
+        # Count different types of content
+        static_text_count = 0
+        data_binding_count = 0
+        aggregate_count = 0
+        empty_count = 0
+
+        for cell in cells:
+            textrun = cell.find(f'.//{ns}TextRun/{ns}Value')
+            if textrun is not None and textrun.text:
+                text = textrun.text.strip()
+                if not text:
+                    empty_count += 1
+                elif text.startswith('='):
+                    # Check if it's an aggregate function
+                    if any(func in text for func in ['Sum(', 'Count(', 'Avg(', 'Min(', 'Max(', 'First(']):
+                        aggregate_count += 1
+                    else:
+                        data_binding_count += 1
+                else:
+                    static_text_count += 1
+            else:
+                empty_count += 1
+
+        total_cells = len(cells)
+
+        # Determine row type based on content
+        if static_text_count >= total_cells * 0.5:
+            return 'header'
+        elif data_binding_count >= total_cells * 0.5:
+            return 'data'
+        elif aggregate_count >= 1:
+            return 'footer'
+        else:
+            return 'empty'
+
+    def _create_table_cell(self, ns: str, row_type: str, row_idx: int,
+                          col_idx: int, header_text: str, field_binding: str,
+                          format_string: Optional[str], textbox_name_base: str) -> ET.Element:
+        """Create a new TablixCell based on row type"""
+        cell = ET.Element(f'{ns}TablixCell')
+        cell_contents = ET.SubElement(cell, f'{ns}CellContents')
+
+        # Generate unique textbox name
+        textbox_name = f"{textbox_name_base}_{row_idx}"
+        textbox = ET.SubElement(cell_contents, f'{ns}Textbox')
+        textbox.set('Name', textbox_name)
+
+        # Add textbox properties
+        can_grow = ET.SubElement(textbox, f'{ns}CanGrow')
+        can_grow.text = 'true'
+        keep_together = ET.SubElement(textbox, f'{ns}KeepTogether')
+        keep_together.text = 'true'
+
+        # Create paragraphs
+        paragraphs = ET.SubElement(textbox, f'{ns}Paragraphs')
+        paragraph = ET.SubElement(paragraphs, f'{ns}Paragraph')
+        text_runs = ET.SubElement(paragraph, f'{ns}TextRuns')
+        text_run = ET.SubElement(text_runs, f'{ns}TextRun')
+        value = ET.SubElement(text_run, f'{ns}Value')
+
+        # Set content based on row type
+        if row_type == 'header':
+            value.text = header_text
+            # Style for header
+            style = ET.SubElement(text_run, f'{ns}Style')
+            font_family = ET.SubElement(style, f'{ns}FontFamily')
+            font_family.text = 'Arial Narrow'
+            font_size = ET.SubElement(style, f'{ns}FontSize')
+            font_size.text = '11pt'
+            font_weight = ET.SubElement(style, f'{ns}FontWeight')
+            font_weight.text = 'Bold'
+        elif row_type == 'data':
+            value.text = field_binding
+            # Style for data
+            style = ET.SubElement(text_run, f'{ns}Style')
+            font_family = ET.SubElement(style, f'{ns}FontFamily')
+            font_family.text = 'Arial Narrow'
+            if format_string:
+                format_elem = ET.SubElement(style, f'{ns}Format')
+                format_elem.text = format_string
+            color = ET.SubElement(style, f'{ns}Color')
+            color.text = '#333333'
+        elif row_type == 'footer':
+            # Try to create an aggregate if field_binding contains a field reference
+            if 'Fields!' in field_binding:
+                # Extract field name and create Sum
+                value.text = field_binding.replace('=Fields!', '=Sum(Fields!').replace('.Value', '.Value)')
+            else:
+                value.text = ''
+            # Style for footer
+            style = ET.SubElement(text_run, f'{ns}Style')
+            font_family = ET.SubElement(style, f'{ns}FontFamily')
+            font_family.text = 'Arial Narrow'
+            font_weight = ET.SubElement(style, f'{ns}FontWeight')
+            font_weight.text = 'Bold'
+            if format_string:
+                format_elem = ET.SubElement(style, f'{ns}Format')
+                format_elem.text = format_string
+            color = ET.SubElement(style, f'{ns}Color')
+            color.text = '#333333'
+        else:  # empty or unknown
+            value.text = ''
+            style = ET.SubElement(text_run, f'{ns}Style')
+            font_family = ET.SubElement(style, f'{ns}FontFamily')
+            font_family.text = 'Arial Narrow'
+            color = ET.SubElement(style, f'{ns}Color')
+            color.text = '#333333'
+
+        # Add paragraph style
+        para_style = ET.SubElement(paragraph, f'{ns}Style')
+
+        # Add default name
+        rd_ns = '{http://schemas.microsoft.com/SQLServer/reporting/reportdesigner}'
+        default_name = ET.SubElement(textbox, f'{rd_ns}DefaultName')
+        default_name.text = textbox_name
+
+        # Add textbox style with borders and padding
+        textbox_style = ET.SubElement(textbox, f'{ns}Style')
+        border = ET.SubElement(textbox_style, f'{ns}Border')
+        border_color = ET.SubElement(border, f'{ns}Color')
+        border_color.text = 'LightGrey'
+        bottom_border = ET.SubElement(textbox_style, f'{ns}BottomBorder')
+        bottom_style = ET.SubElement(bottom_border, f'{ns}Style')
+        bottom_style.text = 'Solid'
+
+        # Add padding
+        for padding in ['PaddingLeft', 'PaddingRight', 'PaddingTop', 'PaddingBottom']:
+            pad = ET.SubElement(textbox_style, f'{ns}{padding}')
+            pad.text = '2pt'
+
+        return cell
+
+    def _update_tablix_width(self, tablix: ET.Element, ns: str):
+        """Update the total width of the Tablix based on column widths"""
+        tablix_body = tablix.find(f'{ns}TablixBody')
+        tablix_columns = tablix_body.find(f'{ns}TablixColumns')
+
+        total_width = 0.0
+        for col in tablix_columns.findall(f'{ns}TablixColumn'):
+            width_elem = col.find(f'{ns}Width')
+            if width_elem is not None and width_elem.text:
+                # Parse width (assuming 'in' units for simplicity)
+                width_str = width_elem.text.strip()
+                if width_str.endswith('in'):
+                    total_width += float(width_str[:-2])
+                elif width_str.endswith('cm'):
+                    # Convert cm to inches (1 inch = 2.54 cm)
+                    total_width += float(width_str[:-2]) / 2.54
+
+        # Update width element
+        width_elem = tablix.find(f'{ns}Width')
+        if width_elem is not None:
+            width_elem.text = f'{total_width:.1f}in'
+
     def update_column_header(self, filepath: str, old_header: str, new_header: str) -> Dict[str, Any]:
         """Update a column header text"""
         tree = ET.parse(filepath)
