@@ -5,17 +5,60 @@ Provides high-level tools for reading and modifying SSRS/RDL reports
 """
 
 import json
+import logging
+import os
 import sys
 from typing import Any, Dict, List, Optional
 import xml.etree.ElementTree as ET
 from xml.dom import minidom
 
+# Configure logging
+def setup_logging():
+    """Configure logging for the RDL MCP Server"""
+    # Get log level from environment variable, default to INFO
+    log_level = os.environ.get('RDL_MCP_LOG_LEVEL', 'INFO').upper()
+    log_file = os.environ.get('RDL_MCP_LOG_FILE')
+
+    # Create logger
+    logger = logging.getLogger('rdl_mcp_server')
+    logger.setLevel(getattr(logging, log_level, logging.INFO))
+
+    # Create formatter
+    formatter = logging.Formatter(
+        '%(asctime)s - %(name)s - %(levelname)s - %(funcName)s:%(lineno)d - %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+    )
+
+    # Console handler (stderr to avoid interfering with MCP protocol on stdout)
+    console_handler = logging.StreamHandler(sys.stderr)
+    console_handler.setLevel(logging.WARNING)  # Only warnings and errors to console
+    console_handler.setFormatter(formatter)
+    logger.addHandler(console_handler)
+
+    # File handler if log file specified
+    if log_file:
+        try:
+            file_handler = logging.FileHandler(log_file)
+            file_handler.setLevel(logging.DEBUG)  # All logs to file
+            file_handler.setFormatter(formatter)
+            logger.addHandler(file_handler)
+            logger.info(f"Logging to file: {log_file}")
+        except Exception as e:
+            logger.error(f"Failed to set up file logging: {e}")
+
+    return logger
+
+# Initialize logger
+logger = setup_logging()
+
 # MCP Protocol implementation
 class MCPServer:
     def __init__(self):
+        logger.info("Initializing RDL MCP Server")
         self.tools = {}
         self.register_tools()
-    
+        logger.info(f"Registered {len(self.tools)} tools")
+
     def register_tools(self):
         """Register all available RDL tools"""
         self.tools = {
@@ -31,6 +74,7 @@ class MCPServer:
             "add_column": self.add_column,
             "validate_rdl": self.validate_rdl,
         }
+        logger.debug(f"Registered tools: {', '.join(self.tools.keys())}")
     
     def handle_request(self, request: Dict[str, Any]) -> Dict[str, Any]:
         """Handle incoming MCP requests"""
@@ -38,7 +82,10 @@ class MCPServer:
         params = request.get("params", {})
         request_id = request.get("id")
 
+        logger.debug(f"Received request: method={method}, id={request_id}")
+
         if method == "initialize":
+            logger.info("Processing initialize request")
             return {
                 "jsonrpc": "2.0",
                 "id": request_id,
@@ -53,8 +100,9 @@ class MCPServer:
                     }
                 }
             }
-        
+
         elif method == "tools/list":
+            logger.info("Processing tools/list request")
             return {
                 "jsonrpc": "2.0",
                 "id": request_id,
@@ -205,10 +253,15 @@ class MCPServer:
         elif method == "tools/call":
             tool_name = params.get("name")
             tool_args = params.get("arguments", {})
-            
+
+            logger.info(f"Tool call: {tool_name}")
+            logger.debug(f"Tool arguments: {tool_args}")
+
             if tool_name in self.tools:
                 try:
                     result = self.tools[tool_name](**tool_args)
+                    logger.info(f"Tool {tool_name} completed successfully")
+                    logger.debug(f"Tool result: {result}")
                     return {
                         "jsonrpc": "2.0",
                         "id": request_id,
@@ -222,6 +275,7 @@ class MCPServer:
                         }
                     }
                 except Exception as e:
+                    logger.error(f"Error executing tool {tool_name}: {str(e)}", exc_info=True)
                     return {
                         "jsonrpc": "2.0",
                         "id": request_id,
@@ -231,6 +285,7 @@ class MCPServer:
                         }
                     }
             else:
+                logger.warning(f"Tool not found: {tool_name}")
                 return {
                     "jsonrpc": "2.0",
                     "id": request_id,
@@ -240,6 +295,7 @@ class MCPServer:
                     }
                 }
 
+        logger.warning(f"Unknown method: {method}")
         return {
             "jsonrpc": "2.0",
             "id": request_id,
@@ -253,8 +309,21 @@ class MCPServer:
     
     def _parse_rdl(self, filepath: str) -> ET.Element:
         """Parse RDL XML file and return root element"""
-        tree = ET.parse(filepath)
-        return tree.getroot()
+        logger.debug(f"Parsing RDL file: {filepath}")
+        try:
+            tree = ET.parse(filepath)
+            root = tree.getroot()
+            logger.debug(f"Successfully parsed RDL file: {filepath}")
+            return root
+        except FileNotFoundError:
+            logger.error(f"File not found: {filepath}")
+            raise
+        except ET.ParseError as e:
+            logger.error(f"XML parse error in {filepath}: {str(e)}")
+            raise
+        except Exception as e:
+            logger.error(f"Unexpected error parsing {filepath}: {str(e)}")
+            raise
     
     def _get_namespace(self, root: ET.Element) -> str:
         """Extract the namespace from the root element"""
@@ -265,6 +334,7 @@ class MCPServer:
     
     def describe_rdl_report(self, filepath: str) -> Dict[str, Any]:
         """Get high-level report structure summary"""
+        logger.info(f"Describing RDL report: {filepath}")
         root = self._parse_rdl(filepath)
         ns = self._get_namespace(root)
         
@@ -273,11 +343,18 @@ class MCPServer:
         for dataset in root.findall(f'.//{ns}DataSet'):
             name = dataset.get('Name')
             query = dataset.find(f'{ns}Query')
-            command_type = query.find(f'{ns}CommandType').text if query.find(f'{ns}CommandType') is not None else 'Unknown'
-            command_text = query.find(f'{ns}CommandText').text if query.find(f'{ns}CommandText') is not None else 'N/A'
-            
+
+            # Handle datasets without Query elements (e.g., embedded datasets)
+            if query is not None:
+                command_type = query.find(f'{ns}CommandType').text if query.find(f'{ns}CommandType') is not None else 'Unknown'
+                command_text = query.find(f'{ns}CommandText').text if query.find(f'{ns}CommandText') is not None else 'N/A'
+            else:
+                command_type = 'Embedded'
+                command_text = 'N/A'
+                logger.debug(f"Dataset '{name}' has no Query element (embedded dataset)")
+
             field_count = len(dataset.findall(f'.//{ns}Field'))
-            
+
             datasets.append({
                 'name': name,
                 'command_type': command_type,
@@ -291,7 +368,9 @@ class MCPServer:
         # Get table info
         tablix = root.find(f'.//{ns}Tablix')
         column_count = len(tablix.findall(f'.//{ns}TablixColumn')) if tablix is not None else 0
-        
+
+        logger.info(f"Report summary: {len(datasets)} datasets, {param_count} parameters, {column_count} columns")
+
         return {
             'report_summary': {
                 'datasets': len(datasets),
@@ -311,19 +390,27 @@ class MCPServer:
         for dataset in root.findall(f'.//{ns}DataSet'):
             name = dataset.get('Name')
             query = dataset.find(f'{ns}Query')
-            
-            # Query info
-            command_type = query.find(f'{ns}CommandType').text if query.find(f'{ns}CommandType') is not None else 'Unknown'
-            command_text = query.find(f'{ns}CommandText').text if query.find(f'{ns}CommandText') is not None else ''
-            datasource = query.find(f'{ns}DataSourceName').text if query.find(f'{ns}DataSourceName') is not None else ''
-            
-            # Query parameters
-            query_params = []
-            for qparam in query.findall(f'.//{ns}QueryParameter'):
-                query_params.append({
-                    'name': qparam.get('Name'),
-                    'value': qparam.find(f'{ns}Value').text if qparam.find(f'{ns}Value') is not None else ''
-                })
+
+            # Query info - handle embedded datasets without Query elements
+            if query is not None:
+                command_type = query.find(f'{ns}CommandType').text if query.find(f'{ns}CommandType') is not None else 'Unknown'
+                command_text = query.find(f'{ns}CommandText').text if query.find(f'{ns}CommandText') is not None else ''
+                datasource = query.find(f'{ns}DataSourceName').text if query.find(f'{ns}DataSourceName') is not None else ''
+
+                # Query parameters
+                query_params = []
+                for qparam in query.findall(f'.//{ns}QueryParameter'):
+                    query_params.append({
+                        'name': qparam.get('Name'),
+                        'value': qparam.find(f'{ns}Value').text if qparam.find(f'{ns}Value') is not None else ''
+                    })
+            else:
+                # Embedded dataset
+                command_type = 'Embedded'
+                command_text = ''
+                datasource = ''
+                query_params = []
+                logger.debug(f"Dataset '{name}' has no Query element (embedded dataset)")
             
             # Fields
             fields = []
@@ -537,6 +624,7 @@ class MCPServer:
                    field_binding: str, width: str = "1in",
                    format_string: Optional[str] = None) -> Dict[str, Any]:
         """Add a new column to the report table at specified position"""
+        logger.info(f"Adding column to {filepath}: header='{header_text}', index={column_index}, binding='{field_binding}'")
         tree = ET.parse(filepath)
         root = tree.getroot()
         ns = self._get_namespace(root)
@@ -544,6 +632,7 @@ class MCPServer:
         # Find the Tablix
         tablix = root.find(f'.//{ns}Tablix')
         if tablix is None:
+            logger.error(f"No Tablix found in {filepath}")
             return {'success': False, 'message': 'No Tablix (table) found in report'}
 
         # Get current columns
@@ -551,10 +640,14 @@ class MCPServer:
         tablix_columns = tablix_body.find(f'{ns}TablixColumns')
         current_column_count = len(tablix_columns.findall(f'{ns}TablixColumn'))
 
+        logger.debug(f"Current column count: {current_column_count}")
+
         # Validate and normalize column_index
         if column_index == -1:
             column_index = current_column_count  # Append at end
+            logger.debug(f"Appending column at end (index {column_index})")
         elif column_index < 0 or column_index > current_column_count:
+            logger.error(f"Invalid column index: {column_index}, valid range: 0-{current_column_count}")
             return {'success': False, 'message': f'Invalid column_index: {column_index}. Valid range: 0-{current_column_count} or -1'}
 
         # Generate unique textbox name
@@ -605,6 +698,8 @@ class MCPServer:
 
         # Write back to file
         self._write_xml(tree, filepath)
+
+        logger.info(f"Successfully added column '{header_text}' at position {column_index}, new total: {current_column_count + 1}")
 
         return {
             'success': True,
@@ -779,53 +874,63 @@ class MCPServer:
 
     def update_column_header(self, filepath: str, old_header: str, new_header: str) -> Dict[str, Any]:
         """Update a column header text"""
+        logger.info(f"Updating column header in {filepath}: '{old_header}' -> '{new_header}'")
         tree = ET.parse(filepath)
         root = tree.getroot()
         ns = self._get_namespace(root)
-        
+
         found = False
         # Find all TextRun Value elements
         for value_elem in root.findall(f'.//{ns}TextRun/{ns}Value'):
             if value_elem.text == old_header:
                 value_elem.text = new_header
                 found = True
-        
+                logger.debug(f"Found and updated header element")
+
         if found:
             # Write back to file with proper formatting
             self._write_xml(tree, filepath)
+            logger.info(f"Successfully updated header from '{old_header}' to '{new_header}'")
             return {'success': True, 'message': f'Updated header from "{old_header}" to "{new_header}"'}
         else:
+            logger.warning(f"Header '{old_header}' not found in {filepath}")
             return {'success': False, 'message': f'Header "{old_header}" not found'}
     
     def update_column_width(self, filepath: str, column_index: int, new_width: str) -> Dict[str, Any]:
         """Update a column width"""
+        logger.info(f"Updating column width in {filepath}: column {column_index} -> {new_width}")
         tree = ET.parse(filepath)
         root = tree.getroot()
         ns = self._get_namespace(root)
-        
+
         tablix = root.find(f'.//{ns}Tablix')
         if tablix is None:
+            logger.error(f"No Tablix found in {filepath}")
             return {'success': False, 'message': 'No Tablix found'}
-        
+
         columns = tablix.findall(f'.//{ns}TablixColumn')
         if column_index >= len(columns):
+            logger.error(f"Column index {column_index} out of range (max: {len(columns)-1})")
             return {'success': False, 'message': f'Column index {column_index} out of range (max: {len(columns)-1})'}
-        
+
         width_elem = columns[column_index].find(f'{ns}Width')
         if width_elem is not None:
             old_width = width_elem.text
             width_elem.text = new_width
             self._write_xml(tree, filepath)
+            logger.info(f"Successfully updated column {column_index} width from {old_width} to {new_width}")
             return {'success': True, 'message': f'Updated column {column_index} width from {old_width} to {new_width}'}
-        
+
+        logger.error(f"Width element not found for column {column_index}")
         return {'success': False, 'message': 'Width element not found'}
     
     def update_stored_procedure(self, filepath: str, dataset_name: str, new_sproc: str) -> Dict[str, Any]:
         """Update stored procedure name for a dataset"""
+        logger.info(f"Updating stored procedure in {filepath}: dataset '{dataset_name}' -> '{new_sproc}'")
         tree = ET.parse(filepath)
         root = tree.getroot()
         ns = self._get_namespace(root)
-        
+
         # Find the dataset
         for dataset in root.findall(f'.//{ns}DataSet'):
             if dataset.get('Name') == dataset_name:
@@ -836,8 +941,10 @@ class MCPServer:
                         old_sproc = command_text.text
                         command_text.text = new_sproc
                         self._write_xml(tree, filepath)
+                        logger.info(f"Successfully updated stored procedure from '{old_sproc}' to '{new_sproc}'")
                         return {'success': True, 'message': f'Updated stored procedure from "{old_sproc}" to "{new_sproc}"'}
-        
+
+        logger.warning(f"Dataset '{dataset_name}' not found in {filepath}")
         return {'success': False, 'message': f'Dataset "{dataset_name}" not found'}
     
     def add_parameter(self, filepath: str, name: str, data_type: str, prompt: str) -> Dict[str, Any]:
@@ -923,13 +1030,17 @@ class MCPServer:
             datasets = root.findall(f'.//{ns}DataSet')
             if not datasets:
                 issues.append('No datasets found')
-            
-            # Check each dataset has a query
+
+            # Check each dataset has a query or is embedded
             for dataset in datasets:
                 name = dataset.get('Name', 'Unknown')
                 query = dataset.find(f'{ns}Query')
+                # Embedded datasets (like parameter lookup tables) don't need Query elements
+                # They're valid as long as they have fields
                 if query is None:
-                    issues.append(f'Dataset "{name}" has no Query element')
+                    fields = dataset.findall(f'.//{ns}Field')
+                    if not fields:
+                        issues.append(f'Dataset "{name}" has no Query element and no Fields')
             
             # Check for at least one Tablix
             tablix = root.find(f'.//{ns}Tablix')
@@ -960,24 +1071,37 @@ class MCPServer:
     
     def _write_xml(self, tree: ET.ElementTree, filepath: str):
         """Write XML tree back to file with proper formatting"""
-        # Convert to string
-        xml_str = ET.tostring(tree.getroot(), encoding='utf-8')
-        
-        # Pretty print using minidom
-        dom = minidom.parseString(xml_str)
-        pretty_xml = dom.toprettyxml(indent='  ', encoding='utf-8')
-        
-        # Remove extra blank lines
-        lines = [line for line in pretty_xml.decode('utf-8').split('\n') if line.strip()]
-        
-        with open(filepath, 'w', encoding='utf-8') as f:
-            f.write('\n'.join(lines))
+        logger.debug(f"Writing XML to file: {filepath}")
+        try:
+            # Convert to string
+            xml_str = ET.tostring(tree.getroot(), encoding='utf-8')
+
+            # Pretty print using minidom
+            dom = minidom.parseString(xml_str)
+            pretty_xml = dom.toprettyxml(indent='  ', encoding='utf-8')
+
+            # Remove extra blank lines
+            lines = [line for line in pretty_xml.decode('utf-8').split('\n') if line.strip()]
+
+            with open(filepath, 'w', encoding='utf-8') as f:
+                f.write('\n'.join(lines))
+
+            logger.info(f"Successfully wrote XML to {filepath}")
+        except Exception as e:
+            logger.error(f"Failed to write XML to {filepath}: {str(e)}", exc_info=True)
+            raise
 
 
 def main():
     """Main entry point for MCP server"""
+    logger.info("Starting RDL MCP Server")
+    logger.info(f"Log level: {logger.level}")
+    logger.info(f"Python version: {sys.version}")
+
     server = MCPServer()
-    
+
+    logger.info("Server ready, listening for requests on stdin")
+
     # Read from stdin, write to stdout (MCP protocol)
     for line in sys.stdin:
         try:
@@ -985,11 +1109,13 @@ def main():
             response = server.handle_request(request)
             print(json.dumps(response))
             sys.stdout.flush()
-        except json.JSONDecodeError:
+        except json.JSONDecodeError as e:
+            logger.error(f"Invalid JSON received: {e}", exc_info=True)
             error_response = {"error": "Invalid JSON"}
             print(json.dumps(error_response))
             sys.stdout.flush()
         except Exception as e:
+            logger.error(f"Unexpected error in main loop: {str(e)}", exc_info=True)
             error_response = {"error": str(e)}
             print(json.dumps(error_response))
             sys.stdout.flush()

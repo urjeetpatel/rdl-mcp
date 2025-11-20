@@ -43,7 +43,7 @@ RDL files are verbose XML documents that are difficult to edit manually. This MC
 2. **Configure your MCP client** (Claude Desktop, Continue.dev, etc.):
 
    For **Claude Desktop**, add to your config file:
-   
+
    **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
    **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
 
@@ -57,6 +57,10 @@ RDL files are verbose XML documents that are difficult to edit manually. This MC
      }
    }
    ```
+
+   **Optional**: Configure logging
+   - `RDL_MCP_LOG_LEVEL`: Set to `DEBUG`, `INFO`, `WARNING`, or `ERROR`
+   - `RDL_MCP_LOG_FILE`: Path to log file (logs to stderr if not set)
 
    For **Continue.dev**, add to `.continue/config.json`:
    ```json
