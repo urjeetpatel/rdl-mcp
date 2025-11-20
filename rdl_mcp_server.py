@@ -476,9 +476,18 @@ class MCPServer:
                 header_text = textrun.text if textrun is not None and textrun.text else ''
                 header_text = header_text.strip()
 
-                # Skip if it's a data binding (starts with =)
+                # Parse dynamic headers (expressions starting with =)
                 if header_text.startswith('='):
-                    header_text = ''
+                    # Try to extract field name from expression like =Fields!Tag_Name.Value
+                    if 'Fields!' in header_text:
+                        try:
+                            # Extract field name between 'Fields!' and the next '.' or ')'
+                            field_name_extracted = header_text.split('Fields!')[1].split('.')[0].split(')')[0]
+                            header_text = field_name_extracted
+                        except:
+                            header_text = '(Dynamic Header)'
+                    else:
+                        header_text = '(Dynamic Header)'
 
                 # Get field binding from data row if available
                 field_binding = None
