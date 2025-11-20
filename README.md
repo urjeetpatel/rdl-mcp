@@ -57,12 +57,13 @@ Edit config file (`~/Library/Application Support/Claude/claude_desktop_config.js
 </details>
 
 <details>
-<summary><b>Continue.dev</b></summary>
+<summary><b>GitHub Copilot (VSCode)</b></summary>
 
-Add to `.continue/config.json`:
+Add to VSCode settings (`.vscode/settings.json` in your workspace or user settings):
+
 ```json
 {
-  "mcpServers": {
+  "github.copilot.chat.mcp.servers": {
     "rdl-mcp": {
       "command": "python3",
       "args": ["/absolute/path/to/rdl_mcp_server.py"]
@@ -70,6 +71,8 @@ Add to `.continue/config.json`:
   }
 }
 ```
+
+**Note:** MCP support in GitHub Copilot requires VSCode with Copilot Chat extension installed.
 </details>
 
 **3. Restart your AI assistant** and try: `"Describe the structure of my report.rdl file"`
