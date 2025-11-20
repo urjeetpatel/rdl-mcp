@@ -1,340 +1,197 @@
 # RDL MCP Server
 
-A Model Context Protocol (MCP) server that provides high-level tools for reading and modifying Microsoft RDL (Report Definition Language) files used in SQL Server Reporting Services (SSRS).
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
+[![MCP](https://img.shields.io/badge/MCP-Compatible-green.svg)](https://modelcontextprotocol.io)
 
-## Overview
+Edit SSRS reports using AI assistants instead of wrestling with 2000+ lines of XML. This [Model Context Protocol (MCP)](https://modelcontextprotocol.io) server gives Claude, Copilot, and other AI tools simple commands to read and modify RDL files.
 
-RDL files are verbose XML documents that are difficult to edit manually. This MCP server provides a simplified interface with specific tools for common editing operations, making it much easier for coding assistants (like Claude, Copilot, etc.) to help you modify reports.
+## What It Does
 
-## Features
+**Read reports:**
+- `describe_rdl_report` - Get report structure overview
+- `get_rdl_datasets` - View datasets, fields, and stored procedures
+- `get_rdl_parameters` - List all report parameters
+- `get_rdl_columns` - See column headers, widths, and bindings
 
-### Reading Tools
-- **describe_rdl_report**: Get high-level summary of report structure
-- **get_rdl_datasets**: Get detailed dataset information including fields and stored procedures
-- **get_rdl_parameters**: Get all report parameters with their configurations
-- **get_rdl_columns**: Get table column headers, widths, and field bindings
+**Modify reports:**
+- `update_column_header` / `update_column_width` - Change columns
+- `add_column` / `remove_column` - Add or remove columns
+- `update_column_format` - Change number/date formatting
+- `update_stored_procedure` - Swap stored procedures
+- `add_dataset_field` / `remove_dataset_field` - Manage dataset fields
+- `add_parameter` / `update_parameter` - Manage parameters
+- `validate_rdl` - Validate XML after changes
 
-### Editing Tools
-- **update_column_header**: Change column header text
-- **update_column_width**: Modify column widths
-- **update_stored_procedure**: Change stored procedure names
-- **add_parameter**: Add new report parameters
-- **update_parameter**: Modify existing parameters
-
-### Validation
-- **validate_rdl**: Validate XML structure after modifications
+**Why it's better than editing XML:**
+- AI sees clean JSON instead of verbose XML namespaces
+- One-line commands instead of error-prone string manipulation
+- Automatic validation catches errors before they break reports
+- No dependencies - just Python 3.8+ standard library
 
 ## Installation
 
-### Prerequisites
-- Python 3.8+
-- No external dependencies (uses only standard library)
-
-### Setup
-
-1. **Save the MCP server file**:
-   ```bash
-   # Save rdl_mcp_server.py to a location on your system
-   mkdir -p ~/mcp-servers
-   cp rdl_mcp_server.py ~/mcp-servers/
-   chmod +x ~/mcp-servers/rdl_mcp_server.py
-   ```
-
-2. **Configure your MCP client** (Claude Desktop, Continue.dev, etc.):
-
-   For **Claude Desktop**, add to your config file:
-
-   **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
-   **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
-
-   ```json
-   {
-     "mcpServers": {
-       "rdl-editor": {
-         "command": "python3",
-         "args": ["/path/to/your/rdl_mcp_server.py"]
-       }
-     }
-   }
-   ```
-
-   **Optional**: Configure logging
-   - `RDL_MCP_LOG_LEVEL`: Set to `DEBUG`, `INFO`, `WARNING`, or `ERROR`
-   - `RDL_MCP_LOG_FILE`: Path to log file (logs to stderr if not set)
-
-   For **Continue.dev**, add to `.continue/config.json`:
-   ```json
-   {
-     "mcpServers": {
-       "rdl-editor": {
-         "command": "python3",
-         "args": ["/path/to/your/rdl_mcp_server.py"]
-       }
-     }
-   }
-   ```
-
-3. **Restart your coding assistant** to load the new MCP server
-
-## Usage Examples
-
-### Example 1: Understanding Report Structure
-
-**User**: "What datasets does this report use?"
-
-**Assistant workflow**:
-```
-1. Calls: describe_rdl_report(filepath="report.rdl")
-2. Calls: get_rdl_datasets(filepath="report.rdl")
-3. Presents dataset information to user
+**1. Get the server:**
+```bash
+git clone https://github.com/yourusername/rdl-mcp.git
+cd rdl-mcp
 ```
 
-### Example 2: Modifying Column Width
+**2. Configure your MCP client:**
 
-**User**: "Make the Account Number column 2 inches wide"
+<details>
+<summary><b>Claude Desktop</b></summary>
 
-**Assistant workflow**:
-```
-1. Calls: get_rdl_columns(filepath="report.rdl")
-2. Finds "Account Number" column index
-3. Calls: update_column_width(filepath="report.rdl", column_index=3, new_width="2in")
-4. Calls: validate_rdl(filepath="report.rdl")
-5. Confirms changes to user
-```
+Edit config file (`~/Library/Application Support/Claude/claude_desktop_config.json` on macOS, `%APPDATA%\Claude\claude_desktop_config.json` on Windows, `~/.config/Claude/claude_desktop_config.json` on Linux):
 
-### Example 3: Updating Stored Procedure
-
-**User**: "Update the main dataset to use the V2 stored procedure"
-
-**Assistant workflow**:
-```
-1. Calls: get_rdl_datasets(filepath="report.rdl")
-2. Identifies main dataset name
-3. Calls: update_stored_procedure(
-     filepath="report.rdl",
-     dataset_name="Report_Data", 
-     new_sproc="Report.001_Get_TransactionDetails_V2"
-   )
-4. Calls: validate_rdl(filepath="report.rdl")
-5. Confirms update to user
-```
-
-### Example 4: Adding New Parameter
-
-**User**: "Add a Year parameter to filter the report"
-
-**Assistant workflow**:
-```
-1. Calls: add_parameter(
-     filepath="report.rdl",
-     name="FilterYear",
-     data_type="Integer",
-     prompt="Select Year"
-   )
-2. Calls: validate_rdl(filepath="report.rdl")
-3. Calls: get_rdl_parameters(filepath="report.rdl") to confirm
-4. Shows user the new parameter configuration
-```
-
-## Tool Reference
-
-### describe_rdl_report
-Get a high-level summary of the report structure.
-
-**Parameters**:
-- `filepath` (string, required): Path to the RDL file
-
-**Returns**:
 ```json
 {
-  "report_summary": {
-    "datasets": 2,
-    "parameters": 5,
-    "table_columns": 9
-  },
-  "datasets": [
-    {
-      "name": "Report_Data",
-      "command_type": "StoredProcedure",
-      "command": "Report.001_Get_TransactionDetails",
-      "field_count": 13
+  "mcpServers": {
+    "rdl-mcp": {
+      "command": "python3",
+      "args": ["/absolute/path/to/rdl_mcp_server.py"]
     }
-  ]
+  }
 }
 ```
+</details>
 
-### get_rdl_datasets
-Get detailed information about all datasets in the report.
+<details>
+<summary><b>Continue.dev</b></summary>
 
-**Parameters**:
-- `filepath` (string, required): Path to the RDL file
+Add to `.continue/config.json`:
+```json
+{
+  "mcpServers": {
+    "rdl-mcp": {
+      "command": "python3",
+      "args": ["/absolute/path/to/rdl_mcp_server.py"]
+    }
+  }
+}
+```
+</details>
 
-**Returns**: Detailed dataset information including fields, queries, and parameters
+**3. Restart your AI assistant** and try: `"Describe the structure of my report.rdl file"`
 
-### get_rdl_parameters
-Get all report parameters with their configurations.
+**Requirements:** Python 3.8+ (no other dependencies)
 
-**Parameters**:
-- `filepath` (string, required): Path to the RDL file
+<details>
+<summary>Optional: Enable debug logging</summary>
 
-**Returns**: List of parameters with types, prompts, default values, and valid values
+Set environment variables:
+- `RDL_MCP_LOG_LEVEL`: `DEBUG`, `INFO`, `WARNING`, or `ERROR`
+- `RDL_MCP_LOG_FILE`: Path to log file
+</details>
 
-### get_rdl_columns
-Get table column information including headers and widths.
+## Usage
 
-**Parameters**:
-- `filepath` (string, required): Path to the RDL file
+Just ask your AI assistant in natural language:
 
-**Returns**: List of columns with indices, headers, widths, and textbox names
+- "What datasets does this report use?"
+- "Make the Account Number column 2 inches wide"
+- "Format the Amount column as currency with 2 decimals"
+- "Update the main dataset to use the V2 stored procedure and add the TaxAmount field"
+- "Remove the obsolete Status column"
+- "Add a Year parameter to filter the report"
 
-### update_column_header
-Change a column header text.
+The AI assistant will use the appropriate MCP tools automatically.
 
-**Parameters**:
-- `filepath` (string, required): Path to the RDL file
-- `old_header` (string, required): Current header text to find
-- `new_header` (string, required): New header text
+## Example: Editing vs. XML
 
-**Returns**: Success status and message
-
-### update_column_width
-Modify a column width.
-
-**Parameters**:
-- `filepath` (string, required): Path to the RDL file
-- `column_index` (integer, required): Zero-based column index
-- `new_width` (string, required): New width (e.g., "2.5in", "3cm")
-
-**Returns**: Success status and message
-
-### update_stored_procedure
-Change the stored procedure name for a dataset.
-
-**Parameters**:
-- `filepath` (string, required): Path to the RDL file
-- `dataset_name` (string, required): Name of the dataset to update
-- `new_sproc` (string, required): New stored procedure name
-
-**Returns**: Success status and message
-
-### add_parameter
-Add a new report parameter.
-
-**Parameters**:
-- `filepath` (string, required): Path to the RDL file
-- `name` (string, required): Parameter name
-- `data_type` (string, required): Data type (String, Integer, DateTime, Boolean)
-- `prompt` (string, required): User-facing prompt text
-
-**Returns**: Success status and message
-
-### update_parameter
-Update an existing report parameter.
-
-**Parameters**:
-- `filepath` (string, required): Path to the RDL file
-- `name` (string, required): Parameter name
-- `prompt` (string, optional): New prompt text
-- `default_value` (string, optional): New default value
-
-**Returns**: Success status and message
-
-### validate_rdl
-Validate the RDL XML structure.
-
-**Parameters**:
-- `filepath` (string, required): Path to the RDL file
-
-**Returns**: Validation status and any issues found
-
-## Testing
-
-Run the included test scripts to verify functionality:
-
-```bash
-# Basic functionality test
-python3 test_rdl_server.py
-
-# Comprehensive demo
-python3 demo_rdl_server.py
+**Without MCP** (manually editing XML):
+```xml
+<!-- Find this in 2000+ lines -->
+<TablixCell><CellContents><Textbox><Paragraphs>
+  <Paragraph><TextRuns><TextRun>
+    <Value>Old Header</Value>
+  </TextRun></TextRuns></Paragraph>
+</Paragraphs></Textbox></CellContents></TablixCell>
 ```
 
-## Advantages Over Direct XML Editing
-
-1. **Simplified Interface**: No need to navigate complex XML structures
-2. **Type Safety**: Tools validate inputs and provide clear error messages
-3. **Abstraction**: Hide XML namespace complexities from the coding assistant
-4. **Validation**: Automatic validation after changes
-5. **Focused Operations**: Tools designed for specific, common tasks
-
-## How It Helps Coding Assistants
-
-When you ask a coding assistant to modify an RDL file:
-
-**Without MCP Tools**:
-- Assistant sees 2000+ lines of verbose XML
-- Must manually parse and understand XML namespaces
-- Error-prone string manipulation
-- Hard to validate changes
-
-**With MCP Tools**:
-- Assistant gets clean, structured JSON responses
-- Uses high-level operations like "update_column_width"
-- Automatic validation
-- Clear success/failure feedback
-
-## Extending the Server
-
-To add new tools:
-
-1. Add the tool method to the `MCPServer` class
-2. Register it in the `register_tools()` method
-3. Add tool description to the `tools/list` handler
-4. Test with the test scripts
-
-Example:
+**With MCP** (one command):
 ```python
-def add_new_column(self, filepath: str, column_name: str, 
-                   data_type: str, position: int) -> Dict[str, Any]:
-    """Add a new column to the report"""
-    # Implementation here
-    pass
+update_column_header(filepath="report.rdl",
+                     old_header="Old Header",
+                     new_header="New Header")
 ```
 
-## Limitations
+## API Reference
 
-- Currently handles Tablix (table) controls only
-- Does not support Matrix or Chart controls
-- Column detection works best with standard report layouts
-- Some complex RDL features may require manual XML editing
+<details>
+<summary>View all available tools</summary>
 
-## Future Enhancements
+### Reading Tools
 
-Potential additions:
-- Support for Matrix and Chart controls
-- Column reordering tools
-- Grouping and sorting configuration
+- **`describe_rdl_report(filepath)`** - Report structure summary
+- **`get_rdl_datasets(filepath)`** - Datasets with fields and stored procedures
+- **`get_rdl_parameters(filepath)`** - All parameters with configurations
+- **`get_rdl_columns(filepath)`** - Column headers, widths, bindings
+
+### Editing Tools
+
+- **`update_column_header(filepath, old_header, new_header)`** - Change column text
+- **`update_column_width(filepath, column_index, new_width)`** - Modify width (e.g. "2.5in")
+- **`update_column_format(filepath, column_index, format_string)`** - Change format (e.g. "#,0.00", "dd/MM/yyyy", "C2")
+- **`add_column(filepath, column_index, header_text, field_binding, width?, format_string?)`** - Add column
+- **`remove_column(filepath, column_index)`** - Remove column
+- **`update_stored_procedure(filepath, dataset_name, new_sproc)`** - Change dataset sproc
+- **`add_dataset_field(filepath, dataset_name, field_name, data_field, type_name)`** - Add field to dataset
+- **`remove_dataset_field(filepath, dataset_name, field_name)`** - Remove field from dataset
+- **`add_parameter(filepath, name, data_type, prompt)`** - Add new parameter
+- **`update_parameter(filepath, name, prompt?, default_value?)`** - Update parameter
+- **`validate_rdl(filepath)`** - Validate XML structure
+
+All tools return `{success: bool, message?: string, error?: string}` or structured data.
+
+</details>
+
+## Limitations & Roadmap
+
+**Current limitations:**
+- Tablix (table) controls only - no Matrix or Chart support yet
+- Works best with standard report layouts
+- Some complex RDL features may still need manual XML editing
+
+**Planned features:**
+- Matrix and Chart control support
+- Column reordering, grouping, and sorting configuration
 - Expression builder helpers
-- Dataset field addition/removal
-- Report deployment tools
+- Dataset field management
 
-## License
+## Troubleshooting
 
-MIT License - Feel free to modify and extend for your needs
+**Server not appearing?**
+- Check absolute path in config is correct
+- Verify Python 3.8+: `python3 --version`
+- Restart your MCP client
 
-## Support
+**Permission errors?**
+- Make script executable: `chmod +x rdl_mcp_server.py`
+- Check RDL file read/write permissions
 
-For issues or questions:
-1. Check the test scripts for usage examples
-2. Review the tool reference documentation
-3. Examine the source code comments
-4. Test with your specific RDL files
+**Validation errors?**
+- Always back up RDL files before editing
+- Run `validate_rdl` to see specific issues
+
+**Need help?** [Open an issue](https://github.com/yourusername/rdl-mcp/issues) or check existing discussions.
 
 ## Contributing
 
-Contributions welcome! Focus areas:
-- Better column detection algorithms
-- Support for more RDL control types
-- Additional editing operations
-- Improved validation logic
-- Performance optimizations
+PRs welcome! Priority areas:
+- Matrix/Chart control support
+- Better column detection for complex layouts
+- More editing operations (reordering, grouping, etc.)
+
+Requirements: Python standard library only, include tests, follow existing style.
+
+1. Fork repo
+2. Create feature branch
+3. Make changes + tests
+4. Submit PR
+
+## License
+
+MIT License - see [LICENSE](LICENSE) file for details.
+
+This means you're free to use, modify, and distribute this software for any purpose, commercial or non-commercial.

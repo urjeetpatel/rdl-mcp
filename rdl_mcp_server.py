@@ -72,6 +72,10 @@ class MCPServer:
             "add_parameter": self.add_parameter,
             "update_parameter": self.update_parameter,
             "add_column": self.add_column,
+            "remove_column": self.remove_column,
+            "update_column_format": self.update_column_format,
+            "add_dataset_field": self.add_dataset_field,
+            "remove_dataset_field": self.remove_dataset_field,
             "validate_rdl": self.validate_rdl,
         }
         logger.debug(f"Registered tools: {', '.join(self.tools.keys())}")
@@ -233,6 +237,59 @@ class MCPServer:
                                 "format_string": {"type": "string", "description": "Optional format string (e.g., '#,0.00' for numbers or 'dd/MM/yyyy' for dates)"}
                             },
                             "required": ["filepath", "column_index", "header_text", "field_binding"]
+                        }
+                    },
+                    {
+                        "name": "remove_column",
+                        "description": "Remove a column from the report table",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "filepath": {"type": "string", "description": "Path to the RDL file"},
+                                "column_index": {"type": "integer", "description": "Zero-based column index to remove"}
+                            },
+                            "required": ["filepath", "column_index"]
+                        }
+                    },
+                    {
+                        "name": "update_column_format",
+                        "description": "Update the format string for a column (e.g., date format, number format)",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "filepath": {"type": "string", "description": "Path to the RDL file"},
+                                "column_index": {"type": "integer", "description": "Zero-based column index"},
+                                "format_string": {"type": "string", "description": "Format string (e.g., '#,0.00' for numbers, 'dd/MM/yyyy' for dates, 'C2' for currency)"}
+                            },
+                            "required": ["filepath", "column_index", "format_string"]
+                        }
+                    },
+                    {
+                        "name": "add_dataset_field",
+                        "description": "Add a new field to a dataset (useful when stored procedure returns new columns)",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "filepath": {"type": "string", "description": "Path to the RDL file"},
+                                "dataset_name": {"type": "string", "description": "Name of the dataset to modify"},
+                                "field_name": {"type": "string", "description": "Name of the field (how it appears in expressions)"},
+                                "data_field": {"type": "string", "description": "Name of the column from the data source"},
+                                "type_name": {"type": "string", "description": "Data type (e.g., 'System.String', 'System.Int32', 'System.Decimal', 'System.DateTime')"}
+                            },
+                            "required": ["filepath", "dataset_name", "field_name", "data_field", "type_name"]
+                        }
+                    },
+                    {
+                        "name": "remove_dataset_field",
+                        "description": "Remove a field from a dataset",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "filepath": {"type": "string", "description": "Path to the RDL file"},
+                                "dataset_name": {"type": "string", "description": "Name of the dataset to modify"},
+                                "field_name": {"type": "string", "description": "Name of the field to remove"}
+                            },
+                            "required": ["filepath", "dataset_name", "field_name"]
                         }
                     },
                     {
@@ -872,6 +929,159 @@ class MCPServer:
         if width_elem is not None:
             width_elem.text = f'{total_width:.1f}in'
 
+    def remove_column(self, filepath: str, column_index: int) -> Dict[str, Any]:
+        """Remove a column from the report table"""
+        logger.info(f"Removing column from {filepath}: index={column_index}")
+        tree = ET.parse(filepath)
+        root = tree.getroot()
+        ns = self._get_namespace(root)
+
+        # Find the Tablix
+        tablix = root.find(f'.//{ns}Tablix')
+        if tablix is None:
+            logger.error(f"No Tablix found in {filepath}")
+            return {'success': False, 'message': 'No Tablix (table) found in report'}
+
+        # Get current columns
+        tablix_body = tablix.find(f'{ns}TablixBody')
+        tablix_columns = tablix_body.find(f'{ns}TablixColumns')
+        columns = tablix_columns.findall(f'{ns}TablixColumn')
+
+        if column_index < 0 or column_index >= len(columns):
+            logger.error(f"Invalid column index: {column_index}, valid range: 0-{len(columns)-1}")
+            return {'success': False, 'message': f'Invalid column_index: {column_index}. Valid range: 0-{len(columns)-1}'}
+
+        logger.debug(f"Removing column {column_index} of {len(columns)} total columns")
+
+        # Step 1: Remove TablixColumn
+        tablix_columns.remove(columns[column_index])
+
+        # Step 2: Remove cells from each row
+        tablix_rows = tablix_body.find(f'{ns}TablixRows')
+        all_rows = tablix_rows.findall(f'{ns}TablixRow')
+
+        for row in all_rows:
+            tablix_cells = row.find(f'{ns}TablixCells')
+            if tablix_cells is not None:
+                cells = tablix_cells.findall(f'{ns}TablixCell')
+                if column_index < len(cells):
+                    tablix_cells.remove(cells[column_index])
+
+        # Step 3: Remove TablixMember from TablixColumnHierarchy
+        column_hierarchy = tablix.find(f'{ns}TablixColumnHierarchy')
+        if column_hierarchy is not None:
+            tablix_members = column_hierarchy.find(f'{ns}TablixMembers')
+            if tablix_members is not None:
+                members = tablix_members.findall(f'{ns}TablixMember')
+                if column_index < len(members):
+                    tablix_members.remove(members[column_index])
+
+        # Step 4: Update total width
+        self._update_tablix_width(tablix, ns)
+
+        # Write back to file
+        self._write_xml(tree, filepath)
+
+        logger.info(f"Successfully removed column at index {column_index}, new total: {len(columns) - 1}")
+
+        return {
+            'success': True,
+            'message': f'Removed column at index {column_index}',
+            'details': {
+                'column_index': column_index,
+                'total_columns': len(columns) - 1
+            }
+        }
+
+    def update_column_format(self, filepath: str, column_index: int, format_string: str) -> Dict[str, Any]:
+        """Update the format string for a column"""
+        logger.info(f"Updating column format in {filepath}: column {column_index} -> '{format_string}'")
+        tree = ET.parse(filepath)
+        root = tree.getroot()
+        ns = self._get_namespace(root)
+
+        tablix = root.find(f'.//{ns}Tablix')
+        if tablix is None:
+            logger.error(f"No Tablix found in {filepath}")
+            return {'success': False, 'message': 'No Tablix (table) found in report'}
+
+        # Get all rows
+        tablix_body = tablix.find(f'{ns}TablixBody')
+        tablix_rows = tablix_body.find(f'{ns}TablixRows')
+        all_rows = tablix_rows.findall(f'{ns}TablixRow')
+
+        # Find data row (row with field bindings)
+        data_row = None
+        for row in all_rows:
+            cells = row.findall(f'{ns}TablixCells/{ns}TablixCell')
+            if not cells:
+                continue
+
+            # Check if this row has data bindings
+            data_binding_count = 0
+            for cell in cells:
+                textrun = cell.find(f'.//{ns}TextRun/{ns}Value')
+                if textrun is not None and textrun.text and textrun.text.strip().startswith('='):
+                    if 'Fields!' in textrun.text:
+                        data_binding_count += 1
+
+            if data_binding_count >= len(cells) * 0.5:
+                data_row = row
+                break
+
+        if data_row is None:
+            logger.warning(f"No data row found in {filepath}")
+            return {'success': False, 'message': 'No data row found in report table'}
+
+        # Get the cell at the specified column index
+        cells = data_row.findall(f'{ns}TablixCells/{ns}TablixCell')
+        if column_index >= len(cells):
+            logger.error(f"Column index {column_index} out of range (max: {len(cells)-1})")
+            return {'success': False, 'message': f'Column index {column_index} out of range (max: {len(cells)-1})'}
+
+        cell = cells[column_index]
+
+        # Find or create the Style/Format element in the TextRun
+        textrun = cell.find(f'.//{ns}TextRun')
+        if textrun is None:
+            logger.error(f"No TextRun found in column {column_index}")
+            return {'success': False, 'message': f'No TextRun found in column {column_index}'}
+
+        # Find or create Style element
+        style = textrun.find(f'{ns}Style')
+        if style is None:
+            style = ET.Element(f'{ns}Style')
+            # Insert Style after Value element
+            value_elem = textrun.find(f'{ns}Value')
+            if value_elem is not None:
+                value_index = list(textrun).index(value_elem)
+                textrun.insert(value_index + 1, style)
+            else:
+                textrun.append(style)
+
+        # Find or create Format element
+        format_elem = style.find(f'{ns}Format')
+        if format_elem is None:
+            format_elem = ET.SubElement(style, f'{ns}Format')
+
+        old_format = format_elem.text
+        format_elem.text = format_string
+
+        # Write back to file
+        self._write_xml(tree, filepath)
+
+        logger.info(f"Successfully updated column {column_index} format from '{old_format}' to '{format_string}'")
+
+        return {
+            'success': True,
+            'message': f'Updated column {column_index} format to "{format_string}"',
+            'details': {
+                'column_index': column_index,
+                'old_format': old_format,
+                'new_format': format_string
+            }
+        }
+
     def update_column_header(self, filepath: str, old_header: str, new_header: str) -> Dict[str, Any]:
         """Update a column header text"""
         logger.info(f"Updating column header in {filepath}: '{old_header}' -> '{new_header}'")
@@ -946,6 +1156,127 @@ class MCPServer:
 
         logger.warning(f"Dataset '{dataset_name}' not found in {filepath}")
         return {'success': False, 'message': f'Dataset "{dataset_name}" not found'}
+
+    def add_dataset_field(self, filepath: str, dataset_name: str, field_name: str,
+                         data_field: str, type_name: str) -> Dict[str, Any]:
+        """Add a new field to a dataset"""
+        logger.info(f"Adding field to dataset '{dataset_name}' in {filepath}: {field_name} ({type_name})")
+        tree = ET.parse(filepath)
+        root = tree.getroot()
+        ns = self._get_namespace(root)
+        rd_ns = '{http://schemas.microsoft.com/SQLServer/reporting/reportdesigner}'
+
+        # Find the dataset
+        dataset = None
+        for ds in root.findall(f'.//{ns}DataSet'):
+            if ds.get('Name') == dataset_name:
+                dataset = ds
+                break
+
+        if dataset is None:
+            logger.warning(f"Dataset '{dataset_name}' not found in {filepath}")
+            return {'success': False, 'message': f'Dataset "{dataset_name}" not found'}
+
+        # Find or create Fields element
+        fields_elem = dataset.find(f'{ns}Fields')
+        if fields_elem is None:
+            logger.debug(f"Creating Fields element for dataset '{dataset_name}'")
+            fields_elem = ET.Element(f'{ns}Fields')
+            # Insert Fields after Query element if it exists, otherwise at the beginning
+            query_elem = dataset.find(f'{ns}Query')
+            if query_elem is not None:
+                query_index = list(dataset).index(query_elem)
+                dataset.insert(query_index + 1, fields_elem)
+            else:
+                dataset.insert(0, fields_elem)
+
+        # Check if field already exists
+        for field in fields_elem.findall(f'{ns}Field'):
+            if field.get('Name') == field_name:
+                logger.warning(f"Field '{field_name}' already exists in dataset '{dataset_name}'")
+                return {'success': False, 'message': f'Field "{field_name}" already exists in dataset "{dataset_name}"'}
+
+        # Create new field
+        new_field = ET.Element(f'{ns}Field')
+        new_field.set('Name', field_name)
+
+        # Add DataField
+        data_field_elem = ET.SubElement(new_field, f'{ns}DataField')
+        data_field_elem.text = data_field
+
+        # Add TypeName (in rd namespace)
+        type_name_elem = ET.SubElement(new_field, f'{rd_ns}TypeName')
+        type_name_elem.text = type_name
+
+        # Add the field to the dataset
+        fields_elem.append(new_field)
+
+        # Write back to file
+        self._write_xml(tree, filepath)
+
+        logger.info(f"Successfully added field '{field_name}' to dataset '{dataset_name}'")
+
+        return {
+            'success': True,
+            'message': f'Added field "{field_name}" to dataset "{dataset_name}"',
+            'details': {
+                'dataset_name': dataset_name,
+                'field_name': field_name,
+                'data_field': data_field,
+                'type_name': type_name
+            }
+        }
+
+    def remove_dataset_field(self, filepath: str, dataset_name: str, field_name: str) -> Dict[str, Any]:
+        """Remove a field from a dataset"""
+        logger.info(f"Removing field '{field_name}' from dataset '{dataset_name}' in {filepath}")
+        tree = ET.parse(filepath)
+        root = tree.getroot()
+        ns = self._get_namespace(root)
+
+        # Find the dataset
+        dataset = None
+        for ds in root.findall(f'.//{ns}DataSet'):
+            if ds.get('Name') == dataset_name:
+                dataset = ds
+                break
+
+        if dataset is None:
+            logger.warning(f"Dataset '{dataset_name}' not found in {filepath}")
+            return {'success': False, 'message': f'Dataset "{dataset_name}" not found'}
+
+        # Find Fields element
+        fields_elem = dataset.find(f'{ns}Fields')
+        if fields_elem is None:
+            logger.warning(f"No fields found in dataset '{dataset_name}'")
+            return {'success': False, 'message': f'No fields found in dataset "{dataset_name}"'}
+
+        # Find and remove the field
+        field_found = False
+        for field in fields_elem.findall(f'{ns}Field'):
+            if field.get('Name') == field_name:
+                fields_elem.remove(field)
+                field_found = True
+                logger.debug(f"Removed field '{field_name}' from dataset '{dataset_name}'")
+                break
+
+        if not field_found:
+            logger.warning(f"Field '{field_name}' not found in dataset '{dataset_name}'")
+            return {'success': False, 'message': f'Field "{field_name}" not found in dataset "{dataset_name}"'}
+
+        # Write back to file
+        self._write_xml(tree, filepath)
+
+        logger.info(f"Successfully removed field '{field_name}' from dataset '{dataset_name}'")
+
+        return {
+            'success': True,
+            'message': f'Removed field "{field_name}" from dataset "{dataset_name}"',
+            'details': {
+                'dataset_name': dataset_name,
+                'field_name': field_name
+            }
+        }
     
     def add_parameter(self, filepath: str, name: str, data_type: str, prompt: str) -> Dict[str, Any]:
         """Add a new report parameter"""
