@@ -157,7 +157,6 @@ All tools return `{success: bool, message?: string, error?: string}` or structur
 - Some complex RDL features may still need manual XML editing
 
 **Planned features:**
-- Matrix and Chart control support
 - Column reordering, grouping, and sorting configuration
 - Expression builder helpers
 - Dataset field management
@@ -173,20 +172,15 @@ All tools return `{success: bool, message?: string, error?: string}` or structur
 - Make script executable: `chmod +x rdl_mcp_server.py`
 - Check RDL file read/write permissions
 
-**Validation errors?**
-- Always back up RDL files before editing
-- Run `validate_rdl` to see specific issues
 
-**Need help?** [Open an issue](https://github.com/yourusername/rdl-mcp/issues) or check existing discussions.
 
 ## Contributing
 
 PRs welcome! Priority areas:
-- Matrix/Chart control support
 - Better column detection for complex layouts
 - More editing operations (reordering, grouping, etc.)
 
-Requirements: Python standard library only, include tests, follow existing style.
+Requirements: Python standard library only
 
 1. Fork repo
 2. Create feature branch
