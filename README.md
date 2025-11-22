@@ -1,5 +1,7 @@
 # RDL MCP Server
 
+mcp-name: io.github.bethmaloney/rdl-mcp
+
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![MCP](https://img.shields.io/badge/MCP-Compatible-green.svg)](https://modelcontextprotocol.io)
@@ -178,6 +180,35 @@ All tools return `{success: bool, message?: string, error?: string}` or structur
 - Check RDL file read/write permissions
 
 
+
+## Releasing a New Version
+
+This server is published to the [MCP Registry](https://registry.modelcontextprotocol.io/). To release a new version:
+
+1. **Update version number** in `server.json`:
+   ```json
+   {
+     "version": "0.2.0"
+   }
+   ```
+
+2. **Commit your changes**:
+   ```bash
+   git add .
+   git commit -m "Release v0.2.0: Add feature description"
+   ```
+
+3. **Create and push a git tag**:
+   ```bash
+   git tag v0.2.0
+   git push origin main --tags
+   ```
+
+4. **Automated publishing**: The GitHub Actions workflow automatically:
+   - Validates `server.json` against the MCP schema
+   - Authenticates with GitHub
+   - Publishes to the MCP Registry
+   - Updates downstream registries (like GitHub's)
 
 ## Contributing
 
