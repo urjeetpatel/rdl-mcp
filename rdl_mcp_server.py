@@ -377,10 +377,58 @@ class MCPServer:
         """Parse RDL XML file and return root element"""
         logger.debug(f"Parsing RDL file: {filepath}")
         try:
+            # Register namespaces before parsing to preserve prefixes
+            self._register_namespaces(filepath)
             tree = ET.parse(filepath)
             root = tree.getroot()
             logger.debug(f"Successfully parsed RDL file: {filepath}")
             return root
+        except FileNotFoundError:
+            logger.error(f"File not found: {filepath}")
+            raise
+        except ET.ParseError as e:
+            logger.error(f"XML parse error in {filepath}: {str(e)}")
+            raise
+        except Exception as e:
+            logger.error(f"Unexpected error parsing {filepath}: {str(e)}")
+            raise
+
+    def _register_namespaces(self, filepath: str):
+        """Register XML namespaces to preserve prefixes when writing"""
+        import re
+        try:
+            with open(filepath, 'r', encoding='utf-8') as f:
+                content = f.read(2000)  # Read first 2000 chars to find namespaces
+
+            # Find all namespace declarations like xmlns:prefix="uri"
+            # Pattern matches: xmlns:prefix="uri" or xmlns="uri"
+            ns_pattern = r'xmlns:([a-zA-Z0-9_]+)="([^"]+)"'
+            matches = re.findall(ns_pattern, content)
+
+            for prefix, uri in matches:
+                logger.debug(f"Registering namespace: {prefix} -> {uri}")
+                ET.register_namespace(prefix, uri)
+
+            # Also register default namespace if present
+            default_ns_pattern = r'xmlns="([^"]+)"'
+            default_matches = re.findall(default_ns_pattern, content)
+            if default_matches:
+                # Register with empty prefix for default namespace
+                logger.debug(f"Registering default namespace: {default_matches[0]}")
+                ET.register_namespace('', default_matches[0])
+
+        except Exception as e:
+            logger.warning(f"Failed to register namespaces from {filepath}: {str(e)}")
+
+    def _parse_rdl_tree(self, filepath: str) -> ET.ElementTree:
+        """Parse RDL XML file and return ElementTree (for methods that need to write)"""
+        logger.debug(f"Parsing RDL tree for modification: {filepath}")
+        try:
+            # Register namespaces before parsing to preserve prefixes
+            self._register_namespaces(filepath)
+            tree = ET.parse(filepath)
+            logger.debug(f"Successfully parsed RDL tree: {filepath}")
+            return tree
         except FileNotFoundError:
             logger.error(f"File not found: {filepath}")
             raise
@@ -727,7 +775,7 @@ class MCPServer:
                    format_string: Optional[str] = None) -> Dict[str, Any]:
         """Add a new column to the report table at specified position"""
         logger.info(f"Adding column to {filepath}: header='{header_text}', index={column_index}, binding='{field_binding}'")
-        tree = ET.parse(filepath)
+        tree = self._parse_rdl_tree(filepath)
         root = tree.getroot()
         ns = self._get_namespace(root)
 
@@ -977,7 +1025,7 @@ class MCPServer:
     def remove_column(self, filepath: str, column_index: int) -> Dict[str, Any]:
         """Remove a column from the report table"""
         logger.info(f"Removing column from {filepath}: index={column_index}")
-        tree = ET.parse(filepath)
+        tree = self._parse_rdl_tree(filepath)
         root = tree.getroot()
         ns = self._get_namespace(root)
 
@@ -1041,7 +1089,7 @@ class MCPServer:
     def update_column_format(self, filepath: str, column_index: int, format_string: str) -> Dict[str, Any]:
         """Update the format string for a column"""
         logger.info(f"Updating column format in {filepath}: column {column_index} -> '{format_string}'")
-        tree = ET.parse(filepath)
+        tree = self._parse_rdl_tree(filepath)
         root = tree.getroot()
         ns = self._get_namespace(root)
 
@@ -1130,7 +1178,7 @@ class MCPServer:
     def update_column_header(self, filepath: str, old_header: str, new_header: str) -> Dict[str, Any]:
         """Update a column header text"""
         logger.info(f"Updating column header in {filepath}: '{old_header}' -> '{new_header}'")
-        tree = ET.parse(filepath)
+        tree = self._parse_rdl_tree(filepath)
         root = tree.getroot()
         ns = self._get_namespace(root)
 
@@ -1154,7 +1202,7 @@ class MCPServer:
     def update_column_width(self, filepath: str, column_index: int, new_width: str) -> Dict[str, Any]:
         """Update a column width"""
         logger.info(f"Updating column width in {filepath}: column {column_index} -> {new_width}")
-        tree = ET.parse(filepath)
+        tree = self._parse_rdl_tree(filepath)
         root = tree.getroot()
         ns = self._get_namespace(root)
 
@@ -1182,7 +1230,7 @@ class MCPServer:
     def update_stored_procedure(self, filepath: str, dataset_name: str, new_sproc: str) -> Dict[str, Any]:
         """Update stored procedure name for a dataset"""
         logger.info(f"Updating stored procedure in {filepath}: dataset '{dataset_name}' -> '{new_sproc}'")
-        tree = ET.parse(filepath)
+        tree = self._parse_rdl_tree(filepath)
         root = tree.getroot()
         ns = self._get_namespace(root)
 
@@ -1206,7 +1254,7 @@ class MCPServer:
                          data_field: str, type_name: str) -> Dict[str, Any]:
         """Add a new field to a dataset"""
         logger.info(f"Adding field to dataset '{dataset_name}' in {filepath}: {field_name} ({type_name})")
-        tree = ET.parse(filepath)
+        tree = self._parse_rdl_tree(filepath)
         root = tree.getroot()
         ns = self._get_namespace(root)
         rd_ns = '{http://schemas.microsoft.com/SQLServer/reporting/reportdesigner}'
@@ -1275,7 +1323,7 @@ class MCPServer:
     def remove_dataset_field(self, filepath: str, dataset_name: str, field_name: str) -> Dict[str, Any]:
         """Remove a field from a dataset"""
         logger.info(f"Removing field '{field_name}' from dataset '{dataset_name}' in {filepath}")
-        tree = ET.parse(filepath)
+        tree = self._parse_rdl_tree(filepath)
         root = tree.getroot()
         ns = self._get_namespace(root)
 
@@ -1325,7 +1373,7 @@ class MCPServer:
     
     def add_parameter(self, filepath: str, name: str, data_type: str, prompt: str) -> Dict[str, Any]:
         """Add a new report parameter"""
-        tree = ET.parse(filepath)
+        tree = self._parse_rdl_tree(filepath)
         root = tree.getroot()
         ns = self._get_namespace(root)
         
@@ -1350,10 +1398,10 @@ class MCPServer:
         self._write_xml(tree, filepath)
         return {'success': True, 'message': f'Added parameter "{name}" with type {data_type}'}
     
-    def update_parameter(self, filepath: str, name: str, prompt: Optional[str] = None, 
+    def update_parameter(self, filepath: str, name: str, prompt: Optional[str] = None,
                         default_value: Optional[str] = None) -> Dict[str, Any]:
         """Update an existing parameter"""
-        tree = ET.parse(filepath)
+        tree = self._parse_rdl_tree(filepath)
         root = tree.getroot()
         ns = self._get_namespace(root)
         
