@@ -125,11 +125,20 @@ class MCPServer:
                     },
                     {
                         "name": "get_rdl_datasets",
-                        "description": "Get all datasets in the report with their fields, queries, and stored procedures",
+                        "description": "Get all datasets in the report with their fields, queries, and stored procedures. By default returns only field counts; use field_limit to get field details.",
                         "inputSchema": {
                             "type": "object",
                             "properties": {
-                                "filepath": {"type": "string", "description": "Path to the RDL file"}
+                                "filepath": {"type": "string", "description": "Path to the RDL file"},
+                                "field_limit": {
+                                    "type": "integer",
+                                    "description": "Number of fields to return per dataset: 0 = no field details (only count, default), -1 = all fields, positive number = limit to that many fields",
+                                    "default": 0
+                                },
+                                "field_pattern": {
+                                    "type": "string",
+                                    "description": "Optional regex pattern to filter field names (case-insensitive)"
+                                }
                             },
                             "required": ["filepath"]
                         }
@@ -438,11 +447,22 @@ class MCPServer:
             'filepath': filepath
         }
     
-    def get_rdl_datasets(self, filepath: str) -> Dict[str, Any]:
-        """Get detailed dataset information"""
+    def get_rdl_datasets(self, filepath: str, field_limit: int = 0, field_pattern: Optional[str] = None) -> Dict[str, Any]:
+        """Get detailed dataset information
+
+        Args:
+            filepath: Path to the RDL file
+            field_limit: Number of fields to return per dataset.
+                        0 = no field details (only count),
+                        -1 = all fields,
+                        positive number = limit to that many fields
+            field_pattern: Optional regex pattern to filter field names
+        """
+        import re
+
         root = self._parse_rdl(filepath)
         ns = self._get_namespace(root)
-        
+
         datasets = []
         for dataset in root.findall(f'.//{ns}DataSet'):
             name = dataset.get('Name')
@@ -468,9 +488,9 @@ class MCPServer:
                 datasource = ''
                 query_params = []
                 logger.debug(f"Dataset '{name}' has no Query element (embedded dataset)")
-            
-            # Fields
-            fields = []
+
+            # Fields - get all field elements first
+            all_fields = []
             for field in dataset.findall(f'.//{ns}Field'):
                 field_name = field.get('Name')
                 data_field = field.find(f'{ns}DataField').text if field.find(f'{ns}DataField') is not None else ''
@@ -478,22 +498,47 @@ class MCPServer:
                 rd_ns = '{http://schemas.microsoft.com/SQLServer/reporting/reportdesigner}'
                 type_name_elem = field.find(f'.//{rd_ns}TypeName')
                 type_name = type_name_elem.text if type_name_elem is not None else 'Unknown'
-                
-                fields.append({
+
+                all_fields.append({
                     'name': field_name,
                     'data_field': data_field,
                     'type': type_name
                 })
-            
-            datasets.append({
+
+            # Apply filtering if pattern is provided
+            if field_pattern:
+                try:
+                    pattern_re = re.compile(field_pattern, re.IGNORECASE)
+                    filtered_fields = [f for f in all_fields if pattern_re.search(f['name'])]
+                except re.error as e:
+                    logger.warning(f"Invalid field_pattern regex: {field_pattern}, error: {e}")
+                    filtered_fields = all_fields
+            else:
+                filtered_fields = all_fields
+
+            # Build dataset info
+            dataset_info = {
                 'name': name,
                 'datasource': datasource,
                 'command_type': command_type,
                 'command_text': command_text,
                 'query_parameters': query_params,
-                'fields': fields
-            })
-        
+                'field_count': len(all_fields)
+            }
+
+            # Apply field limit
+            if field_limit != 0:
+                if field_limit == -1:
+                    # Return all filtered fields
+                    dataset_info['fields'] = filtered_fields
+                    dataset_info['fields_truncated'] = False
+                else:
+                    # Return limited number of fields
+                    dataset_info['fields'] = filtered_fields[:field_limit]
+                    dataset_info['fields_truncated'] = len(filtered_fields) > field_limit
+
+            datasets.append(dataset_info)
+
         return {'datasets': datasets}
     
     def get_rdl_parameters(self, filepath: str) -> Dict[str, Any]:

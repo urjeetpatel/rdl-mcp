@@ -10,7 +10,7 @@ Edit SSRS reports using AI assistants instead of wrestling with 2000+ lines of X
 
 **Read reports:**
 - `describe_rdl_report` - Get report structure overview
-- `get_rdl_datasets` - View datasets, fields, and stored procedures
+- `get_rdl_datasets` - View datasets, fields, and stored procedures (supports field limiting and filtering)
 - `get_rdl_parameters` - List all report parameters
 - `get_rdl_columns` - See column headers, widths, and bindings
 
@@ -127,7 +127,9 @@ update_column_header(filepath="report.rdl",
 ### Reading Tools
 
 - **`describe_rdl_report(filepath)`** - Report structure summary
-- **`get_rdl_datasets(filepath)`** - Datasets with fields and stored procedures
+- **`get_rdl_datasets(filepath, field_limit?, field_pattern?)`** - Datasets with fields and stored procedures
+  - `field_limit`: 0 = counts only (default), -1 = all fields, N = limit to N fields
+  - `field_pattern`: Optional regex to filter field names
 - **`get_rdl_parameters(filepath)`** - All parameters with configurations
 - **`get_rdl_columns(filepath)`** - Column headers, widths, bindings
 
