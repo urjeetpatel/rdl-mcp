@@ -242,7 +242,8 @@ class MCPServer:
                                 "header_text": {"type": "string", "description": "Header text for the column"},
                                 "field_binding": {"type": "string", "description": "Field binding expression (e.g., '=Fields!Amount.Value')"},
                                 "width": {"type": "string", "description": "Column width (e.g., '1.5in', '3cm'). Defaults to '1in'"},
-                                "format_string": {"type": "string", "description": "Optional format string (e.g., '#,0.00' for numbers or 'dd/MM/yyyy' for dates)"}
+                                "format_string": {"type": "string", "description": "Optional format string (e.g., '#,0.00' for numbers or 'dd/MM/yyyy' for dates)"},
+                                "footer_expression": {"type": "string", "description": "Optional expression for footer/total row. Examples: '=Sum(Fields!Amount.Value)', '=Count(Fields!ID.Value)', 'Total:', or leave empty for blank footer"}
                             },
                             "required": ["filepath", "column_index", "header_text", "field_binding"]
                         }
@@ -770,7 +771,8 @@ class MCPServer:
 
     def add_column(self, filepath: str, column_index: int, header_text: str,
                    field_binding: str, width: str = "1in",
-                   format_string: Optional[str] = None) -> Dict[str, Any]:
+                   format_string: Optional[str] = None,
+                   footer_expression: Optional[str] = None) -> Dict[str, Any]:
         """Add a new column to the report table at specified position"""
         logger.info(f"Adding column to {filepath}: header='{header_text}', index={column_index}, binding='{field_binding}'")
         tree = self._parse_rdl_tree(filepath)
@@ -827,7 +829,7 @@ class MCPServer:
             # Create appropriate cell based on row type
             new_cell = self._create_table_cell(
                 ns, row_type, row_idx, column_index,
-                header_text, field_binding, format_string, textbox_name_base
+                header_text, field_binding, format_string, textbox_name_base, footer_expression
             )
 
             # Insert at the right position
@@ -903,7 +905,8 @@ class MCPServer:
 
     def _create_table_cell(self, ns: str, row_type: str, row_idx: int,
                           col_idx: int, header_text: str, field_binding: str,
-                          format_string: Optional[str], textbox_name_base: str) -> ET.Element:
+                          format_string: Optional[str], textbox_name_base: str,
+                          footer_expression: Optional[str] = None) -> ET.Element:
         """Create a new TablixCell based on row type"""
         cell = ET.Element(f'{ns}TablixCell')
         cell_contents = ET.SubElement(cell, f'{ns}CellContents')
@@ -949,11 +952,17 @@ class MCPServer:
             color = ET.SubElement(style, f'{ns}Color')
             color.text = '#333333'
         elif row_type == 'footer':
-            # Try to create an aggregate if field_binding contains a field reference
-            if 'Fields!' in field_binding:
-                # Extract field name and create Sum
-                value.text = field_binding.replace('=Fields!', '=Sum(Fields!').replace('.Value', '.Value)')
+            # Use the footer_expression if provided, otherwise leave empty
+            if footer_expression:
+                # If expression doesn't start with '=', add it (for static text)
+                if not footer_expression.startswith('=') and not footer_expression.strip() == '':
+                    # Static text - use as is
+                    value.text = footer_expression
+                else:
+                    # Expression - use as provided
+                    value.text = footer_expression
             else:
+                # No footer expression provided - leave empty
                 value.text = ''
             # Style for footer
             style = ET.SubElement(text_run, f'{ns}Style')

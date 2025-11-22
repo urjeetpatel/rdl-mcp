@@ -94,6 +94,8 @@ Just ask your AI assistant in natural language:
 - "What datasets does this report use?"
 - "Make the Account Number column 2 inches wide"
 - "Format the Amount column as currency with 2 decimals"
+- "Add a new Amount column that shows the sum in the footer"
+- "Add a Status column but leave the footer blank"
 - "Update the main dataset to use the V2 stored procedure and add the TaxAmount field"
 - "Remove the obsolete Status column"
 - "Add a Year parameter to filter the report"
@@ -138,7 +140,8 @@ update_column_header(filepath="report.rdl",
 - **`update_column_header(filepath, old_header, new_header)`** - Change column text
 - **`update_column_width(filepath, column_index, new_width)`** - Modify width (e.g. "2.5in")
 - **`update_column_format(filepath, column_index, format_string)`** - Change format (e.g. "#,0.00", "dd/MM/yyyy", "C2")
-- **`add_column(filepath, column_index, header_text, field_binding, width?, format_string?)`** - Add column
+- **`add_column(filepath, column_index, header_text, field_binding, width?, format_string?, footer_expression?)`** - Add column
+  - `footer_expression`: Optional expression for footer/total row - e.g. "=Sum(Fields!Amount.Value)", "=Count(Fields!ID.Value)", "Total:", or leave empty
 - **`remove_column(filepath, column_index)`** - Remove column
 - **`update_stored_procedure(filepath, dataset_name, new_sproc)`** - Change dataset sproc
 - **`add_dataset_field(filepath, dataset_name, field_name, data_field, type_name)`** - Add field to dataset
