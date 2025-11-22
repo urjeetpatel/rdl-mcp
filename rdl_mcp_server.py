@@ -10,7 +10,6 @@ import os
 import sys
 from typing import Any, Dict, List, Optional
 import xml.etree.ElementTree as ET
-from xml.dom import minidom
 
 # Configure logging
 def setup_logging():
@@ -401,7 +400,6 @@ class MCPServer:
                 content = f.read(2000)  # Read first 2000 chars to find namespaces
 
             # Find all namespace declarations like xmlns:prefix="uri"
-            # Pattern matches: xmlns:prefix="uri" or xmlns="uri"
             ns_pattern = r'xmlns:([a-zA-Z0-9_]+)="([^"]+)"'
             matches = re.findall(ns_pattern, content)
 
@@ -409,7 +407,7 @@ class MCPServer:
                 logger.debug(f"Registering namespace: {prefix} -> {uri}")
                 ET.register_namespace(prefix, uri)
 
-            # Also register default namespace if present
+            # Check for default namespace (xmlns="uri")
             default_ns_pattern = r'xmlns="([^"]+)"'
             default_matches = re.findall(default_ns_pattern, content)
             if default_matches:
@@ -1493,22 +1491,36 @@ class MCPServer:
                 'issues': [f'Error: {str(e)}']
             }
     
+    def _indent_xml(self, elem, level=0):
+        """Add indentation to XML elements for pretty printing without changing namespace structure"""
+        indent = "\n" + "  " * level
+        if len(elem):
+            if not elem.text or not elem.text.strip():
+                elem.text = indent + "  "
+            if not elem.tail or not elem.tail.strip():
+                elem.tail = indent
+            for child in elem:
+                self._indent_xml(child, level + 1)
+            if not child.tail or not child.tail.strip():
+                child.tail = indent
+        else:
+            if level and (not elem.tail or not elem.tail.strip()):
+                elem.tail = indent
+
     def _write_xml(self, tree: ET.ElementTree, filepath: str):
         """Write XML tree back to file with proper formatting"""
         logger.debug(f"Writing XML to file: {filepath}")
         try:
-            # Convert to string
-            xml_str = ET.tostring(tree.getroot(), encoding='utf-8')
+            # Use ElementTree with custom indentation (avoids minidom which reorganizes namespaces)
+            root = tree.getroot()
+            self._indent_xml(root)
 
-            # Pretty print using minidom
-            dom = minidom.parseString(xml_str)
-            pretty_xml = dom.toprettyxml(indent='  ', encoding='utf-8')
-
-            # Remove extra blank lines
-            lines = [line for line in pretty_xml.decode('utf-8').split('\n') if line.strip()]
-
-            with open(filepath, 'w', encoding='utf-8') as f:
-                f.write('\n'.join(lines))
+            tree.write(
+                filepath,
+                encoding='utf-8',
+                xml_declaration=True,
+                method='xml'
+            )
 
             logger.info(f"Successfully wrote XML to {filepath}")
         except Exception as e:
