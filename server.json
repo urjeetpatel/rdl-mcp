@@ -11,19 +11,13 @@
   },
   "packages": [
     {
-      "registryType": "git",
-      "identifier": "https://github.com/bethmaloney/rdl-mcp.git",
+      "registryType": "pypi",
+      "identifier": "rdl-mcp",
       "version": "0.1.0",
       "transport": {
         "type": "stdio"
       },
-      "runtimeHint": "python3",
-      "packageArguments": [
-        {
-          "type": "positional",
-          "value": "rdl_mcp_server.py"
-        }
-      ],
+      "runtimeHint": "uvx",
       "environmentVariables": [
         {
           "name": "RDL_MCP_LOG_LEVEL",
