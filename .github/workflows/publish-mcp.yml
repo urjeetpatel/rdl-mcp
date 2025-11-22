@@ -59,11 +59,9 @@ jobs:
           chmod +x /usr/local/bin/mcp-publisher
 
       - name: Publish to MCP Registry
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Authenticate with GitHub
-          echo "$GITHUB_TOKEN" | mcp-publisher login github --token-stdin
+          # Authenticate with GitHub OIDC
+          mcp-publisher login github-oidc
 
           # Publish to registry
           mcp-publisher publish
