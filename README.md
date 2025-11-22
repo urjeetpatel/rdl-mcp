@@ -2,6 +2,7 @@
 
 mcp-name: io.github.bethmaloney/rdl-mcp
 
+[![PyPI](https://img.shields.io/pypi/v/rdl-mcp.svg)](https://pypi.org/project/rdl-mcp/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![MCP](https://img.shields.io/badge/MCP-Compatible-green.svg)](https://modelcontextprotocol.io)
@@ -33,25 +34,33 @@ Edit SSRS reports using AI assistants instead of wrestling with 2000+ lines of X
 
 ## Installation
 
-**1. Get the server:**
-```bash
-git clone https://github.com/yourusername/rdl-mcp.git
-cd rdl-mcp
-```
+**Requirements:**
+- Python 3.8 or higher
+- [uv](https://docs.astral.sh/uv/) (Python package manager and tool runner)
 
-**2. Configure your MCP client:**
+**Installing uv:**
+- **macOS/Linux:** `curl -LsSf https://astral.sh/uv/install.sh | sh`
+- **Windows:** `powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"`
+- **Alternative (all platforms):** `pip install uv` or see [installation docs](https://docs.astral.sh/uv/getting-started/installation/)
+
+**Note:** `uvx` (included with `uv`) automatically handles the Python environment and dependencies. No manual Python package installation needed!
+
+### Quick Start
 
 <details>
 <summary><b>Claude Desktop</b></summary>
 
-Edit config file (`~/Library/Application Support/Claude/claude_desktop_config.json` on macOS, `%APPDATA%\Claude\claude_desktop_config.json` on Windows, `~/.config/Claude/claude_desktop_config.json` on Linux):
+Edit config file:
+- **macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`
+- **Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
+- **Linux:** `~/.config/Claude/claude_desktop_config.json`
 
 ```json
 {
   "mcpServers": {
     "rdl-mcp": {
-      "command": "python3",
-      "args": ["/absolute/path/to/rdl_mcp_server.py"]
+      "command": "uvx",
+      "args": ["rdl-mcp"]
     }
   }
 }
@@ -67,19 +76,18 @@ Add to VSCode settings (`.vscode/settings.json` in your workspace or user settin
 {
   "github.copilot.chat.mcp.servers": {
     "rdl-mcp": {
-      "command": "python3",
-      "args": ["/absolute/path/to/rdl_mcp_server.py"]
+      "command": "uvx",
+      "args": ["rdl-mcp"]
     }
   }
 }
 ```
 
-**Note:** MCP support in GitHub Copilot requires VSCode with Copilot Chat extension installed.
+**Note:** Requires VSCode with Copilot Chat extension installed.
 </details>
 
-**3. Restart your AI assistant** and try: `"Describe the structure of my report.rdl file"`
 
-**Requirements:** Python 3.8+ (no other dependencies)
+**After installation:** Restart your AI assistant and try: `"Describe the structure of my report.rdl file"`
 
 <details>
 <summary>Optional: Enable debug logging</summary>
@@ -183,12 +191,24 @@ All tools return `{success: bool, message?: string, error?: string}` or structur
 
 ## Releasing a New Version
 
-This server is published to the [MCP Registry](https://registry.modelcontextprotocol.io/). To release a new version:
+This server is published to [PyPI](https://pypi.org/project/rdl-mcp/) and the [MCP Registry](https://registry.modelcontextprotocol.io/). To release a new version:
 
-1. **Update version number** in `server.json`:
+1. **Update version numbers** in both files:
+
+   `pyproject.toml`:
+   ```toml
+   version = "0.2.0"
+   ```
+
+   `server.json`:
    ```json
    {
-     "version": "0.2.0"
+     "version": "0.2.0",
+     "packages": [
+       {
+         "version": "0.2.0"
+       }
+     ]
    }
    ```
 
@@ -204,11 +224,11 @@ This server is published to the [MCP Registry](https://registry.modelcontextprot
    git push origin main --tags
    ```
 
-4. **Automated publishing**: The GitHub Actions workflow automatically:
-   - Validates `server.json` against the MCP schema
-   - Authenticates with GitHub
-   - Publishes to the MCP Registry
-   - Updates downstream registries (like GitHub's)
+4. **Automated publishing**: The GitHub Actions workflows automatically:
+   - Build and publish to PyPI (users can install via `uvx rdl-mcp`)
+   - Validate `server.json` against the MCP schema
+   - Publish to the MCP Registry (server appears in registry search)
+   - Update downstream registries (like GitHub's MCP marketplace)
 
 ## Contributing
 
