@@ -70,12 +70,13 @@ Edit config file:
 <details>
 <summary><b>GitHub Copilot (VSCode)</b></summary>
 
-Add to VSCode settings (`.vscode/settings.json` in your workspace or user settings):
+Add to VSCode settings (`.vscode/mcp.json` in your workspace or user settings):
 
 ```json
 {
-  "github.copilot.chat.mcp.servers": {
-    "rdl-mcp": {
+  "servers": {
+    "rdlMcp": {
+      "type": "stdio",
       "command": "uvx",
       "args": ["rdl-mcp"]
     }
