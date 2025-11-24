@@ -263,6 +263,12 @@ def _create_sample_report(path: str):
           </Tablix>
         </ReportItems>
       </Body>
+      <Page>
+        <PageWidth>8.5in</PageWidth>
+        <PageHeight>11in</PageHeight>
+        <LeftMargin>0.5in</LeftMargin>
+        <RightMargin>0.5in</RightMargin>
+      </Page>
     </ReportSection>
   </ReportSections>
 </Report>'''
@@ -510,6 +516,55 @@ class TestColumnOperations:
         result = server.update_column_format(temp_report, 2, 'C2')
 
         assert result['success'] == True
+
+    def test_remove_column(self, server, temp_report):
+        # Get initial column count
+        columns_before = server.get_rdl_columns(temp_report)
+        assert len(columns_before['columns']) == 3
+
+        result = server.remove_column(temp_report, 1)
+        assert result['success'] == True
+
+        # Verify column was removed
+        columns_after = server.get_rdl_columns(temp_report)
+        assert len(columns_after['columns']) == 2
+
+    def test_remove_column_auto_adjusts_page_width_by_default(self, server, temp_report):
+        # Initial columns: 1in + 2in + 1.5in = 4.5in total
+        # Page has 0.5in margins on each side
+        # Remove column 1 (2in) - should now be 2.5in total
+        # Expected new page width: 2.5in + 0.5in + 0.5in = 3.5in
+
+        result = server.remove_column(temp_report, 1)
+        assert result['success'] == True
+
+        # Verify page width was adjusted
+        import xml.etree.ElementTree as ET
+        tree = ET.parse(temp_report)
+        root = tree.getroot()
+        ns = '{http://schemas.microsoft.com/sqlserver/reporting/2016/01/reportdefinition}'
+        page_width = root.find(f'.//{ns}PageWidth')
+        assert page_width is not None
+        # Page width should be reduced (original was 8.5in)
+        assert float(page_width.text.replace('in', '')) < 8.5
+
+    def test_remove_column_without_auto_adjust(self, server, temp_report):
+        # Get original page width
+        import xml.etree.ElementTree as ET
+        tree = ET.parse(temp_report)
+        root = tree.getroot()
+        ns = '{http://schemas.microsoft.com/sqlserver/reporting/2016/01/reportdefinition}'
+        original_page_width = root.find(f'.//{ns}PageWidth').text
+
+        # Remove column with auto_adjust_page_width=False
+        result = server.remove_column(temp_report, 1, auto_adjust_page_width=False)
+        assert result['success'] == True
+
+        # Verify page width was NOT changed
+        tree = ET.parse(temp_report)
+        root = tree.getroot()
+        page_width = root.find(f'.//{ns}PageWidth')
+        assert page_width.text == original_page_width
 
 
 class TestDatasetOperations:

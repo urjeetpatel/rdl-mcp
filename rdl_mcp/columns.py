@@ -82,8 +82,16 @@ def add_column(filepath: str, column_index: int, header_text: str,
     }
 
 
-def remove_column(filepath: str, column_index: int) -> Dict[str, Any]:
-    """Remove a column from the report table."""
+def remove_column(filepath: str, column_index: int,
+                  auto_adjust_page_width: bool = True) -> Dict[str, Any]:
+    """Remove a column from the report table.
+
+    Args:
+        filepath: Path to the RDL file
+        column_index: Zero-based index of the column to remove
+        auto_adjust_page_width: If True (default), shrink the page width to fit
+                               the remaining columns plus margins
+    """
     tree = parse_rdl_tree(filepath)
     root = tree.getroot()
     ns = get_namespace(root)
@@ -121,7 +129,11 @@ def remove_column(filepath: str, column_index: int) -> Dict[str, Any]:
                 cells.remove(cell_list[column_index])
 
     # Update Tablix width
-    _update_tablix_width(tablix, ns)
+    tablix_width = _update_tablix_width(tablix, ns)
+
+    # Optionally adjust page width
+    if auto_adjust_page_width:
+        _update_page_width(root, ns, tablix_width)
 
     write_xml(tree, filepath)
 
@@ -255,27 +267,63 @@ def _create_table_cell(ns: str, row_type: str, row_idx: int,
     return cell
 
 
-def _update_tablix_width(tablix: ET.Element, ns: str):
-    """Recalculate and update the Tablix width based on column widths."""
+def _parse_dimension(dimension_str: str) -> float:
+    """Parse a dimension string (e.g., '2in', '5cm') to inches."""
+    if not dimension_str:
+        return 0.0
+    try:
+        if dimension_str.endswith('in'):
+            return float(dimension_str[:-2])
+        elif dimension_str.endswith('cm'):
+            return float(dimension_str[:-2]) / 2.54
+        elif dimension_str.endswith('mm'):
+            return float(dimension_str[:-2]) / 25.4
+        elif dimension_str.endswith('pt'):
+            return float(dimension_str[:-2]) / 72.0
+        else:
+            return float(dimension_str)
+    except ValueError:
+        return 0.0
+
+
+def _update_tablix_width(tablix: ET.Element, ns: str) -> float:
+    """Recalculate and update the Tablix width based on column widths.
+
+    Returns the calculated total width in inches.
+    """
     columns = tablix.findall(f'.//{ns}TablixBody/{ns}TablixColumns/{ns}TablixColumn')
 
     total_width = 0.0
     for col in columns:
         width_elem = col.find(f'{ns}Width')
         if width_elem is not None and width_elem.text:
-            width_str = width_elem.text
-            # Parse width (e.g., "2in", "5cm")
-            try:
-                if width_str.endswith('in'):
-                    total_width += float(width_str[:-2])
-                elif width_str.endswith('cm'):
-                    total_width += float(width_str[:-2]) / 2.54
-                else:
-                    total_width += float(width_str)
-            except ValueError:
-                pass
+            total_width += _parse_dimension(width_elem.text)
 
     # Update Tablix Width element
     width_elem = tablix.find(f'{ns}Width')
     if width_elem is not None:
         width_elem.text = f'{total_width:.2f}in'
+
+    return total_width
+
+
+def _update_page_width(root: ET.Element, ns: str, tablix_width: float):
+    """Update the page width to fit the tablix plus margins."""
+    page = root.find(f'.//{ns}Page')
+    if page is None:
+        return
+
+    # Get margins
+    left_margin_elem = page.find(f'{ns}LeftMargin')
+    right_margin_elem = page.find(f'{ns}RightMargin')
+
+    left_margin = _parse_dimension(left_margin_elem.text if left_margin_elem is not None else '0in')
+    right_margin = _parse_dimension(right_margin_elem.text if right_margin_elem is not None else '0in')
+
+    # Calculate new page width
+    new_page_width = tablix_width + left_margin + right_margin
+
+    # Update PageWidth element
+    page_width_elem = page.find(f'{ns}PageWidth')
+    if page_width_elem is not None:
+        page_width_elem.text = f'{new_page_width:.2f}in'

@@ -257,7 +257,12 @@ class MCPServer:
                 'type': 'object',
                 'properties': {
                     'filepath': {'type': 'string'},
-                    'column_index': {'type': 'integer'}
+                    'column_index': {'type': 'integer'},
+                    'auto_adjust_page_width': {
+                        'type': 'boolean',
+                        'default': True,
+                        'description': 'If true, shrink page width to fit remaining columns plus margins'
+                    }
                 },
                 'required': ['filepath', 'column_index']
             },
@@ -347,8 +352,9 @@ class MCPServer:
         return columns.add_column(filepath, column_index, header_text, field_binding,
                                   width, format_string, footer_expression)
 
-    def remove_column(self, filepath: str, column_index: int) -> Dict[str, Any]:
-        return columns.remove_column(filepath, column_index)
+    def remove_column(self, filepath: str, column_index: int,
+                      auto_adjust_page_width: bool = True) -> Dict[str, Any]:
+        return columns.remove_column(filepath, column_index, auto_adjust_page_width)
 
     def update_stored_procedure(self, filepath: str, dataset_name: str, new_sproc: str) -> Dict[str, Any]:
         return datasets.update_stored_procedure(filepath, dataset_name, new_sproc)
