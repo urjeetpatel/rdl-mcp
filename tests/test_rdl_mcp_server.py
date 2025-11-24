@@ -1,0 +1,627 @@
+"""
+Tests for RDL MCP Server
+
+Run with: pytest tests/ -v
+"""
+
+import pytest
+import tempfile
+import shutil
+import os
+import sys
+
+# Add parent directory to path for imports
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from rdl_mcp_server import MCPServer
+
+
+# Path to test fixtures
+FIXTURES_DIR = os.path.join(os.path.dirname(__file__), 'fixtures')
+SAMPLE_REPORT = os.path.join(FIXTURES_DIR, 'sample_report.rdl')
+
+
+@pytest.fixture(scope='module')
+def server():
+    """Create a single MCPServer instance for all tests."""
+    return MCPServer()
+
+
+@pytest.fixture
+def temp_report():
+    """Create a temporary copy of the sample report for write tests."""
+    os.makedirs(FIXTURES_DIR, exist_ok=True)
+
+    # Create sample report if it doesn't exist
+    if not os.path.exists(SAMPLE_REPORT):
+        _create_sample_report(SAMPLE_REPORT)
+
+    # Create temp copy
+    with tempfile.NamedTemporaryFile(suffix='.rdl', delete=False) as f:
+        shutil.copy(SAMPLE_REPORT, f.name)
+        temp_path = f.name
+
+    yield temp_path
+
+    # Cleanup
+    if os.path.exists(temp_path):
+        os.unlink(temp_path)
+
+
+def _create_sample_report(path: str):
+    """Create a minimal sample RDL report for testing."""
+    rdl_content = '''<?xml version="1.0" encoding="utf-8"?>
+<Report xmlns="http://schemas.microsoft.com/sqlserver/reporting/2016/01/reportdefinition" xmlns:rd="http://schemas.microsoft.com/SQLServer/reporting/reportdesigner">
+  <DataSources>
+    <DataSource Name="TestDataSource">
+      <ConnectionProperties>
+        <DataProvider>SQL</DataProvider>
+        <ConnectString>Data Source=localhost;Initial Catalog=TestDB</ConnectString>
+      </ConnectionProperties>
+    </DataSource>
+  </DataSources>
+  <DataSets>
+    <DataSet Name="MainDataset">
+      <Query>
+        <DataSourceName>TestDataSource</DataSourceName>
+        <CommandType>StoredProcedure</CommandType>
+        <CommandText>usp_GetTestData</CommandText>
+        <QueryParameters>
+          <QueryParameter Name="@StartDate">
+            <Value>=Parameters!StartDate.Value</Value>
+          </QueryParameter>
+        </QueryParameters>
+      </Query>
+      <Fields>
+        <Field Name="ID">
+          <DataField>ID</DataField>
+          <rd:TypeName>System.Int32</rd:TypeName>
+        </Field>
+        <Field Name="Name">
+          <DataField>Name</DataField>
+          <rd:TypeName>System.String</rd:TypeName>
+        </Field>
+        <Field Name="Amount">
+          <DataField>Amount</DataField>
+          <rd:TypeName>System.Decimal</rd:TypeName>
+        </Field>
+        <Field Name="CreatedDate">
+          <DataField>CreatedDate</DataField>
+          <rd:TypeName>System.DateTime</rd:TypeName>
+        </Field>
+      </Fields>
+    </DataSet>
+    <DataSet Name="LookupDataset">
+      <Query>
+        <DataSourceName>TestDataSource</DataSourceName>
+        <CommandType>StoredProcedure</CommandType>
+        <CommandText>usp_GetLookupData</CommandText>
+      </Query>
+      <Fields>
+        <Field Name="LookupID">
+          <DataField>LookupID</DataField>
+          <rd:TypeName>System.Int32</rd:TypeName>
+        </Field>
+        <Field Name="LookupValue">
+          <DataField>LookupValue</DataField>
+          <rd:TypeName>System.String</rd:TypeName>
+        </Field>
+      </Fields>
+    </DataSet>
+  </DataSets>
+  <ReportParameters>
+    <ReportParameter Name="StartDate">
+      <DataType>DateTime</DataType>
+      <Prompt>Start Date</Prompt>
+    </ReportParameter>
+    <ReportParameter Name="EndDate">
+      <DataType>DateTime</DataType>
+      <Prompt>End Date</Prompt>
+    </ReportParameter>
+  </ReportParameters>
+  <ReportSections>
+    <ReportSection>
+      <Body>
+        <ReportItems>
+          <Tablix Name="MainTable">
+            <TablixBody>
+              <TablixColumns>
+                <TablixColumn>
+                  <Width>1in</Width>
+                </TablixColumn>
+                <TablixColumn>
+                  <Width>2in</Width>
+                </TablixColumn>
+                <TablixColumn>
+                  <Width>1.5in</Width>
+                </TablixColumn>
+              </TablixColumns>
+              <TablixRows>
+                <TablixRow>
+                  <Height>0.25in</Height>
+                  <TablixCells>
+                    <TablixCell>
+                      <CellContents>
+                        <Textbox Name="HeaderID">
+                          <Paragraphs>
+                            <Paragraph>
+                              <TextRuns>
+                                <TextRun>
+                                  <Value>ID</Value>
+                                </TextRun>
+                              </TextRuns>
+                            </Paragraph>
+                          </Paragraphs>
+                        </Textbox>
+                      </CellContents>
+                    </TablixCell>
+                    <TablixCell>
+                      <CellContents>
+                        <Textbox Name="HeaderName">
+                          <Paragraphs>
+                            <Paragraph>
+                              <TextRuns>
+                                <TextRun>
+                                  <Value>Name</Value>
+                                </TextRun>
+                              </TextRuns>
+                            </Paragraph>
+                          </Paragraphs>
+                        </Textbox>
+                      </CellContents>
+                    </TablixCell>
+                    <TablixCell>
+                      <CellContents>
+                        <Textbox Name="HeaderAmount">
+                          <Paragraphs>
+                            <Paragraph>
+                              <TextRuns>
+                                <TextRun>
+                                  <Value>Amount</Value>
+                                </TextRun>
+                              </TextRuns>
+                            </Paragraph>
+                          </Paragraphs>
+                        </Textbox>
+                      </CellContents>
+                    </TablixCell>
+                  </TablixCells>
+                </TablixRow>
+                <TablixRow>
+                  <Height>0.25in</Height>
+                  <TablixCells>
+                    <TablixCell>
+                      <CellContents>
+                        <Textbox Name="DataID">
+                          <Paragraphs>
+                            <Paragraph>
+                              <TextRuns>
+                                <TextRun>
+                                  <Value>=Fields!ID.Value</Value>
+                                </TextRun>
+                              </TextRuns>
+                            </Paragraph>
+                          </Paragraphs>
+                        </Textbox>
+                      </CellContents>
+                    </TablixCell>
+                    <TablixCell>
+                      <CellContents>
+                        <Textbox Name="DataName">
+                          <Paragraphs>
+                            <Paragraph>
+                              <TextRuns>
+                                <TextRun>
+                                  <Value>=Fields!Name.Value</Value>
+                                </TextRun>
+                              </TextRuns>
+                            </Paragraph>
+                          </Paragraphs>
+                        </Textbox>
+                      </CellContents>
+                    </TablixCell>
+                    <TablixCell>
+                      <CellContents>
+                        <Textbox Name="DataAmount">
+                          <Paragraphs>
+                            <Paragraph>
+                              <TextRuns>
+                                <TextRun>
+                                  <Value>=Fields!Amount.Value</Value>
+                                  <Style>
+                                    <Format>#,0.00</Format>
+                                  </Style>
+                                </TextRun>
+                              </TextRuns>
+                            </Paragraph>
+                          </Paragraphs>
+                        </Textbox>
+                      </CellContents>
+                    </TablixCell>
+                  </TablixCells>
+                </TablixRow>
+              </TablixRows>
+            </TablixBody>
+            <TablixColumnHierarchy>
+              <TablixMembers>
+                <TablixMember />
+                <TablixMember />
+                <TablixMember />
+              </TablixMembers>
+            </TablixColumnHierarchy>
+            <TablixRowHierarchy>
+              <TablixMembers>
+                <TablixMember>
+                  <KeepWithGroup>After</KeepWithGroup>
+                </TablixMember>
+                <TablixMember>
+                  <Group Name="DetailGroup" />
+                </TablixMember>
+              </TablixMembers>
+            </TablixRowHierarchy>
+            <DataSetName>MainDataset</DataSetName>
+          </Tablix>
+        </ReportItems>
+      </Body>
+    </ReportSection>
+  </ReportSections>
+</Report>'''
+
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, 'w') as f:
+        f.write(rdl_content)
+
+
+class TestDescribeReport:
+    """Tests for describe_rdl_report function."""
+
+    def test_describe_returns_report_structure(self, server, temp_report):
+        result = server.describe_rdl_report(temp_report)
+
+        assert 'datasets' in result
+        assert 'report_summary' in result
+        assert 'filepath' in result
+
+    def test_describe_lists_datasets(self, server, temp_report):
+        result = server.describe_rdl_report(temp_report)
+
+        dataset_names = [d['name'] for d in result['datasets']]
+        assert 'MainDataset' in dataset_names
+        assert 'LookupDataset' in dataset_names
+
+    def test_describe_includes_summary_counts(self, server, temp_report):
+        result = server.describe_rdl_report(temp_report)
+
+        summary = result['report_summary']
+        assert summary['datasets'] == 2
+        assert summary['parameters'] == 2
+        assert summary['table_columns'] == 3
+
+
+class TestGetDatasets:
+    """Tests for get_rdl_datasets function."""
+
+    def test_get_datasets_returns_all_datasets(self, server, temp_report):
+        result = server.get_rdl_datasets(temp_report)
+
+        assert 'datasets' in result
+        assert len(result['datasets']) == 2
+
+    def test_get_datasets_includes_field_count(self, server, temp_report):
+        result = server.get_rdl_datasets(temp_report)
+
+        main_ds = next(d for d in result['datasets'] if d['name'] == 'MainDataset')
+        assert main_ds['field_count'] == 4
+
+    def test_get_datasets_with_field_limit(self, server, temp_report):
+        result = server.get_rdl_datasets(temp_report, field_limit=2)
+
+        main_ds = next(d for d in result['datasets'] if d['name'] == 'MainDataset')
+        assert 'fields' in main_ds
+        assert len(main_ds['fields']) == 2
+        assert main_ds['fields_truncated'] == True
+
+    def test_get_datasets_all_fields(self, server, temp_report):
+        result = server.get_rdl_datasets(temp_report, field_limit=-1)
+
+        main_ds = next(d for d in result['datasets'] if d['name'] == 'MainDataset')
+        assert len(main_ds['fields']) == 4
+        assert main_ds['fields_truncated'] == False
+
+    def test_get_datasets_includes_stored_procedure(self, server, temp_report):
+        result = server.get_rdl_datasets(temp_report)
+
+        main_ds = next(d for d in result['datasets'] if d['name'] == 'MainDataset')
+        assert main_ds['command_type'] == 'StoredProcedure'
+        assert main_ds['command_text'] == 'usp_GetTestData'
+
+
+class TestGetParameters:
+    """Tests for get_rdl_parameters function."""
+
+    def test_get_parameters_returns_all_parameters(self, server, temp_report):
+        result = server.get_rdl_parameters(temp_report)
+
+        assert 'parameters' in result
+        assert len(result['parameters']) == 2
+
+    def test_get_parameters_includes_type(self, server, temp_report):
+        result = server.get_rdl_parameters(temp_report)
+
+        start_param = next(p for p in result['parameters'] if p['name'] == 'StartDate')
+        assert start_param['data_type'] == 'DateTime'
+        assert start_param['prompt'] == 'Start Date'
+
+
+class TestGetColumns:
+    """Tests for get_rdl_columns function."""
+
+    def test_get_columns_returns_column_info(self, server, temp_report):
+        result = server.get_rdl_columns(temp_report)
+
+        assert 'columns' in result
+        assert len(result['columns']) == 3
+
+    def test_get_columns_includes_headers(self, server, temp_report):
+        result = server.get_rdl_columns(temp_report)
+
+        headers = [c['header'] for c in result['columns']]
+        assert 'ID' in headers
+        assert 'Name' in headers
+        assert 'Amount' in headers
+
+    def test_get_columns_includes_field_binding(self, server, temp_report):
+        result = server.get_rdl_columns(temp_report)
+
+        amount_col = next(c for c in result['columns'] if c['header'] == 'Amount')
+        assert amount_col['field_binding'] == '=Fields!Amount.Value'
+        assert amount_col['field_name'] == 'Amount'
+
+
+class TestValidation:
+    """Tests for validate_rdl function."""
+
+    def test_valid_report_passes(self, server, temp_report):
+        result = server.validate_rdl(temp_report)
+
+        assert result['valid'] == True
+
+    def test_invalid_field_reference_fails(self, server, temp_report):
+        # Modify report to have invalid field reference
+        with open(temp_report, 'r') as f:
+            content = f.read()
+        content = content.replace('=Fields!Amount.Value', '=Fields!NonExistent.Value')
+        with open(temp_report, 'w') as f:
+            f.write(content)
+
+        result = server.validate_rdl(temp_report)
+
+        assert result['valid'] == False
+        assert any('NonExistent' in issue for issue in result['issues'])
+
+    def test_missing_dataset_fails(self, server):
+        # Create report with reference to non-existent dataset
+        with tempfile.NamedTemporaryFile(suffix='.rdl', delete=False, mode='w') as f:
+            f.write('''<?xml version="1.0" encoding="utf-8"?>
+<Report xmlns="http://schemas.microsoft.com/sqlserver/reporting/2016/01/reportdefinition">
+  <DataSets></DataSets>
+  <ReportSections><ReportSection><Body><ReportItems>
+  </ReportItems></Body></ReportSection></ReportSections>
+</Report>''')
+            temp_path = f.name
+
+        try:
+            result = server.validate_rdl(temp_path)
+            assert result['valid'] == False
+            assert any('No datasets' in issue for issue in result['issues'])
+        finally:
+            os.unlink(temp_path)
+
+
+class TestExpressionParsing:
+    """Tests for field reference extraction from expressions."""
+
+    def test_simple_field_reference(self, server):
+        result = server._extract_field_references_with_context(
+            '=Fields!Name.Value',
+            'MainDataset'
+        )
+
+        assert 'MainDataset' in result
+        assert 'Name' in result['MainDataset']
+
+    def test_aggregate_function(self, server):
+        result = server._extract_field_references_with_context(
+            '=Sum(Fields!Amount.Value)',
+            'MainDataset'
+        )
+
+        assert 'MainDataset' in result
+        assert 'Amount' in result['MainDataset']
+
+    def test_aggregate_with_scope(self, server):
+        result = server._extract_field_references_with_context(
+            '=First(Fields!LookupValue.Value, "LookupDataset")',
+            'MainDataset'
+        )
+
+        assert 'LookupDataset' in result
+        assert 'LookupValue' in result['LookupDataset']
+        assert 'MainDataset' not in result
+
+    def test_lookup_function(self, server):
+        result = server._extract_field_references_with_context(
+            '=Lookup(Fields!ID.Value, Fields!LookupID.Value, Fields!LookupValue.Value, "LookupDataset")',
+            'MainDataset'
+        )
+
+        # Source field should be in MainDataset
+        assert 'MainDataset' in result
+        assert 'ID' in result['MainDataset']
+
+        # Target fields should be in LookupDataset
+        assert 'LookupDataset' in result
+        assert 'LookupID' in result['LookupDataset']
+        assert 'LookupValue' in result['LookupDataset']
+
+    def test_complex_expression(self, server):
+        result = server._extract_field_references_with_context(
+            '=IIF(Fields!Amount.Value > 0, Fields!Name.Value, "N/A")',
+            'MainDataset'
+        )
+
+        assert 'MainDataset' in result
+        assert 'Amount' in result['MainDataset']
+        assert 'Name' in result['MainDataset']
+
+    def test_non_expression_returns_empty(self, server):
+        result = server._extract_field_references_with_context(
+            'Static Text',
+            'MainDataset'
+        )
+
+        assert result == {}
+
+
+class TestColumnOperations:
+    """Tests for column add/remove/update operations."""
+
+    def test_update_column_header(self, server, temp_report):
+        result = server.update_column_header(temp_report, 'Name', 'Full Name')
+
+        assert result['success'] == True
+
+        # Verify the change
+        columns = server.get_rdl_columns(temp_report)
+        headers = [c['header'] for c in columns['columns']]
+        assert 'Full Name' in headers
+        assert 'Name' not in headers
+
+    def test_update_column_width(self, server, temp_report):
+        result = server.update_column_width(temp_report, 0, '1.5in')
+
+        assert result['success'] == True
+
+        # Verify the change
+        columns = server.get_rdl_columns(temp_report)
+        assert columns['columns'][0]['width'] == '1.5in'
+
+    def test_update_column_format(self, server, temp_report):
+        result = server.update_column_format(temp_report, 2, 'C2')
+
+        assert result['success'] == True
+
+
+class TestDatasetOperations:
+    """Tests for dataset field operations."""
+
+    def test_add_dataset_field(self, server, temp_report):
+        result = server.add_dataset_field(
+            temp_report,
+            'MainDataset',
+            'NewField',
+            'NewField',
+            'System.String'
+        )
+
+        assert result['success'] == True
+
+        # Verify the field was added
+        datasets = server.get_rdl_datasets(temp_report, field_limit=-1)
+        main_ds = next(d for d in datasets['datasets'] if d['name'] == 'MainDataset')
+        field_names = [f['name'] for f in main_ds['fields']]
+        assert 'NewField' in field_names
+
+    def test_remove_dataset_field(self, server, temp_report):
+        # First verify the field exists
+        datasets = server.get_rdl_datasets(temp_report, field_limit=-1)
+        main_ds = next(d for d in datasets['datasets'] if d['name'] == 'MainDataset')
+        assert any(f['name'] == 'CreatedDate' for f in main_ds['fields'])
+
+        # Remove it
+        result = server.remove_dataset_field(temp_report, 'MainDataset', 'CreatedDate')
+        assert result['success'] == True
+
+        # Verify it's gone
+        datasets = server.get_rdl_datasets(temp_report, field_limit=-1)
+        main_ds = next(d for d in datasets['datasets'] if d['name'] == 'MainDataset')
+        assert not any(f['name'] == 'CreatedDate' for f in main_ds['fields'])
+
+    def test_update_stored_procedure(self, server, temp_report):
+        result = server.update_stored_procedure(
+            temp_report,
+            'MainDataset',
+            'usp_NewProcedure'
+        )
+
+        assert result['success'] == True
+
+        # Verify the change
+        datasets = server.get_rdl_datasets(temp_report)
+        main_ds = next(d for d in datasets['datasets'] if d['name'] == 'MainDataset')
+        assert main_ds['command_text'] == 'usp_NewProcedure'
+
+
+class TestParameterOperations:
+    """Tests for parameter operations."""
+
+    def test_add_parameter(self, server, temp_report):
+        result = server.add_parameter(
+            temp_report,
+            'NewParam',
+            'String',
+            'Enter a value'
+        )
+
+        assert result['success'] == True
+
+        # Verify the parameter was added
+        params = server.get_rdl_parameters(temp_report)
+        param_names = [p['name'] for p in params['parameters']]
+        assert 'NewParam' in param_names
+
+    def test_update_parameter_prompt(self, server, temp_report):
+        result = server.update_parameter(
+            temp_report,
+            'StartDate',
+            prompt='Select Start Date'
+        )
+
+        assert result['success'] == True
+
+        # Verify the change
+        params = server.get_rdl_parameters(temp_report)
+        start_param = next(p for p in params['parameters'] if p['name'] == 'StartDate')
+        assert start_param['prompt'] == 'Select Start Date'
+
+
+class TestErrorHandling:
+    """Tests for error handling."""
+
+    def test_invalid_file_path(self, server):
+        result = server.validate_rdl('/nonexistent/path/report.rdl')
+
+        assert result['valid'] == False
+        assert len(result['issues']) > 0
+
+    def test_invalid_xml(self, server):
+        with tempfile.NamedTemporaryFile(suffix='.rdl', delete=False, mode='w') as f:
+            f.write('not valid xml <>')
+            temp_path = f.name
+
+        try:
+            result = server.validate_rdl(temp_path)
+            assert result['valid'] == False
+            assert any('Parse Error' in issue or 'Error' in issue for issue in result['issues'])
+        finally:
+            os.unlink(temp_path)
+
+    def test_update_nonexistent_parameter(self, server, temp_report):
+        result = server.update_parameter(temp_report, 'NonExistent', prompt='Test')
+
+        assert result['success'] == False
+        assert 'not found' in result['message']
+
+
+if __name__ == '__main__':
+    pytest.main([__file__, '-v'])
