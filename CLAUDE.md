@@ -10,19 +10,19 @@ RDL MCP Server is a Model Context Protocol (MCP) server that enables AI assistan
 
 ```bash
 # Run all tests
-pytest tests/ -v
+python3 -m pytest tests/ -v
 
 # Run a single test file
-pytest tests/test_rdl_mcp_server.py -v
+python3 -m pytest tests/test_rdl_mcp_server.py -v
 
 # Run a specific test class
-pytest tests/test_rdl_mcp_server.py::TestColumnOperations -v
+python3 -m pytest tests/test_rdl_mcp_server.py::TestColumnOperations -v
 
 # Run a specific test
-pytest tests/test_rdl_mcp_server.py::TestColumnOperations::test_update_column_header -v
+python3 -m pytest tests/test_rdl_mcp_server.py::TestColumnOperations::test_update_column_header -v
 
 # Run the server directly (for testing)
-python rdl_mcp_server.py
+python3 rdl_mcp_server.py
 
 # Install with uv (preferred)
 uvx rdl-mcp
@@ -61,7 +61,7 @@ Tests use pytest with fixtures that create temporary RDL files. The `_create_sam
 
 **Requirements:**
 - Write tests before implementing any changes
-- All tests must pass after making changes (`pytest tests/ -v`)
+- All tests must pass after making changes (`python3 -m pytest tests/ -v`)
 
 ## Logging
 
