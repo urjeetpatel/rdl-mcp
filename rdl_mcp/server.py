@@ -58,6 +58,10 @@ class MCPServer:
                 'function': self.update_column_format,
                 'description': 'Update the format string for a column'
             },
+            'update_column_colors': {
+                'function': self.update_column_colors,
+                'description': 'Update text and background colors for a column\'s data and/or header cells'
+            },
             'add_column': {
                 'function': self.add_column,
                 'description': 'Add a new column to the report table'
@@ -240,6 +244,18 @@ class MCPServer:
                 },
                 'required': ['filepath', 'column_index', 'format_string']
             },
+            'update_column_colors': {
+                'type': 'object',
+                'properties': {
+                    'filepath': {'type': 'string'},
+                    'column_index': {'type': 'integer'},
+                    'text_color': {'type': 'string', 'description': 'Text color for data cells (e.g., "Red", "#FF0000")'},
+                    'background_color': {'type': 'string', 'description': 'Background color for data cells'},
+                    'header_text_color': {'type': 'string', 'description': 'Text color for header cell'},
+                    'header_background_color': {'type': 'string', 'description': 'Background color for header cell'}
+                },
+                'required': ['filepath', 'column_index']
+            },
             'add_column': {
                 'type': 'object',
                 'properties': {
@@ -344,6 +360,14 @@ class MCPServer:
 
     def update_column_format(self, filepath: str, column_index: int, format_string: str) -> Dict[str, Any]:
         return columns.update_column_format(filepath, column_index, format_string)
+
+    def update_column_colors(self, filepath: str, column_index: int,
+                             text_color: Optional[str] = None,
+                             background_color: Optional[str] = None,
+                             header_text_color: Optional[str] = None,
+                             header_background_color: Optional[str] = None) -> Dict[str, Any]:
+        return columns.update_column_colors(filepath, column_index, text_color, background_color,
+                                            header_text_color, header_background_color)
 
     def add_column(self, filepath: str, column_index: int, header_text: str,
                    field_binding: str, width: str = "1in",

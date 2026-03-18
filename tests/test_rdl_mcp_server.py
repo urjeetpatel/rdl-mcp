@@ -567,6 +567,134 @@ class TestColumnOperations:
         assert page_width.text == original_page_width
 
 
+class TestUpdateColumnColors:
+    """Tests for update_column_colors operation."""
+
+    RDL_NS = '{http://schemas.microsoft.com/sqlserver/reporting/2016/01/reportdefinition}'
+
+    def _parse_report(self, filepath: str):
+        """Parse the RDL file and return (root, ns) for assertions."""
+        import xml.etree.ElementTree as ET
+        root = ET.parse(filepath).getroot()
+        return root, self.RDL_NS
+
+    def test_update_data_text_color(self, server, temp_report):
+        result = server.update_column_colors(temp_report, 0, text_color='Red')
+
+        assert result['success'] == True
+
+        root, ns = self._parse_report(temp_report)
+        textbox = root.find(f'.//{ns}Textbox[@Name="DataID"]')
+        assert textbox is not None
+        style = textbox.find(f'{ns}Style')
+        assert style is not None
+        color_elem = style.find(f'{ns}Color')
+        assert color_elem is not None
+        assert color_elem.text == 'Red'
+
+    def test_update_data_background_color(self, server, temp_report):
+        result = server.update_column_colors(temp_report, 1, background_color='LightBlue')
+
+        assert result['success'] == True
+
+        root, ns = self._parse_report(temp_report)
+        textbox = root.find(f'.//{ns}Textbox[@Name="DataName"]')
+        assert textbox is not None
+        style = textbox.find(f'{ns}Style')
+        assert style is not None
+        bg_elem = style.find(f'{ns}BackgroundColor')
+        assert bg_elem is not None
+        assert bg_elem.text == 'LightBlue'
+
+    def test_update_header_text_color(self, server, temp_report):
+        result = server.update_column_colors(temp_report, 2, header_text_color='White')
+
+        assert result['success'] == True
+
+        root, ns = self._parse_report(temp_report)
+        textbox = root.find(f'.//{ns}Textbox[@Name="HeaderAmount"]')
+        assert textbox is not None
+        style = textbox.find(f'{ns}Style')
+        assert style is not None
+        color_elem = style.find(f'{ns}Color')
+        assert color_elem is not None
+        assert color_elem.text == 'White'
+
+    def test_update_header_background_color(self, server, temp_report):
+        result = server.update_column_colors(temp_report, 0, header_background_color='DarkBlue')
+
+        assert result['success'] == True
+
+        root, ns = self._parse_report(temp_report)
+        textbox = root.find(f'.//{ns}Textbox[@Name="HeaderID"]')
+        assert textbox is not None
+        style = textbox.find(f'{ns}Style')
+        assert style is not None
+        bg_elem = style.find(f'{ns}BackgroundColor')
+        assert bg_elem is not None
+        assert bg_elem.text == 'DarkBlue'
+
+    def test_update_all_colors(self, server, temp_report):
+        result = server.update_column_colors(
+            temp_report, 1,
+            text_color='Black',
+            background_color='White',
+            header_text_color='White',
+            header_background_color='Navy'
+        )
+
+        assert result['success'] == True
+
+        root, ns = self._parse_report(temp_report)
+
+        # Check data cell
+        data_textbox = root.find(f'.//{ns}Textbox[@Name="DataName"]')
+        assert data_textbox is not None
+        data_style = data_textbox.find(f'{ns}Style')
+        assert data_style.find(f'{ns}Color').text == 'Black'
+        assert data_style.find(f'{ns}BackgroundColor').text == 'White'
+
+        # Check header cell
+        header_textbox = root.find(f'.//{ns}Textbox[@Name="HeaderName"]')
+        assert header_textbox is not None
+        header_style = header_textbox.find(f'{ns}Style')
+        assert header_style.find(f'{ns}Color').text == 'White'
+        assert header_style.find(f'{ns}BackgroundColor').text == 'Navy'
+
+    def test_no_colors_provided_returns_error(self, server, temp_report):
+        result = server.update_column_colors(temp_report, 0)
+
+        assert result['success'] == False
+        assert 'At least one color parameter must be provided' in result['message']
+
+    def test_invalid_column_index_returns_error(self, server, temp_report):
+        result = server.update_column_colors(temp_report, 99, text_color='Red')
+
+        assert result['success'] == False
+        assert 'out of range' in result['message']
+
+    def test_update_colors_preserves_existing_format(self, server, temp_report):
+        # First set a format on the column
+        server.update_column_format(temp_report, 2, 'C2')
+        # Then set a color
+        result = server.update_column_colors(temp_report, 2, background_color='Yellow')
+
+        assert result['success'] == True
+
+        root, ns = self._parse_report(temp_report)
+        textbox = root.find(f'.//{ns}Textbox[@Name="DataAmount"]')
+        assert textbox is not None
+        # BackgroundColor is on the Textbox-level Style
+        style = textbox.find(f'{ns}Style')
+        assert style is not None
+        assert style.find(f'{ns}BackgroundColor').text == 'Yellow'
+        # Format is on the TextRun-level Style - verify it's still there
+        text_run = textbox.find(f'.//{ns}TextRun')
+        tr_style = text_run.find(f'{ns}Style')
+        assert tr_style is not None
+        assert tr_style.find(f'{ns}Format').text == 'C2'
+
+
 class TestDatasetOperations:
     """Tests for dataset field operations."""
 
