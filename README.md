@@ -21,6 +21,7 @@ Edit SSRS reports using AI assistants instead of wrestling with 2000+ lines of X
 - `update_column_header` / `update_column_width` - Change columns
 - `add_column` / `remove_column` - Add or remove columns
 - `update_column_format` - Change number/date formatting
+- `update_column_colors` - Change the colors for the column header and the data rows
 - `update_stored_procedure` - Swap stored procedures
 - `add_dataset_field` / `remove_dataset_field` - Manage dataset fields
 - `add_parameter` / `update_parameter` - Manage parameters
