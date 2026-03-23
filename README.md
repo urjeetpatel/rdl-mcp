@@ -4,7 +4,7 @@ mcp-name: io.github.bethmaloney/rdl-mcp
 
 [![PyPI](https://img.shields.io/pypi/v/rdl-mcp.svg)](https://pypi.org/project/rdl-mcp/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![MCP](https://img.shields.io/badge/MCP-Compatible-green.svg)](https://modelcontextprotocol.io)
 
 Edit SSRS reports using AI assistants instead of wrestling with 2000+ lines of XML. This [Model Context Protocol (MCP)](https://modelcontextprotocol.io) server gives Claude, Copilot, and other AI tools simple commands to read and modify RDL files.
@@ -31,12 +31,12 @@ Edit SSRS reports using AI assistants instead of wrestling with 2000+ lines of X
 - AI sees clean JSON instead of verbose XML namespaces
 - One-line commands instead of error-prone string manipulation
 - Automatic validation catches errors before they break reports
-- No dependencies - just Python 3.8+ standard library
+- Built on [fastmcp](https://github.com/jlowin/fastmcp) for a robust, standards-compliant MCP transport
 
 ## Installation
 
 **Requirements:**
-- Python 3.8 or higher
+- Python 3.10 or higher
 - [uv](https://docs.astral.sh/uv/) (Python package manager and tool runner)
 
 **Installing uv:**
@@ -90,14 +90,6 @@ Add to VSCode settings (`.vscode/mcp.json` in your workspace or user settings):
 
 
 **After installation:** Restart your AI assistant and try: `"Describe the structure of my report.rdl file"`
-
-<details>
-<summary>Optional: Enable debug logging</summary>
-
-Set environment variables:
-- `RDL_MCP_LOG_LEVEL`: `DEBUG`, `INFO`, `WARNING`, or `ERROR`
-- `RDL_MCP_LOG_FILE`: Path to log file
-</details>
 
 ## Usage
 
@@ -182,7 +174,7 @@ All tools return `{success: bool, message?: string, error?: string}` or structur
 
 **Server not appearing?**
 - Check absolute path in config is correct
-- Verify Python 3.8+: `python3 --version`
+- Verify Python 3.10+: `python3 --version`
 - Restart your MCP client
 
 **Permission errors?**
@@ -238,7 +230,7 @@ PRs welcome! Priority areas:
 - Better column detection for complex layouts
 - More editing operations (reordering, grouping, etc.)
 
-Requirements: Python standard library only
+Requirements: Python 3.10+, fastmcp
 
 1. Fork repo
 2. Create feature branch

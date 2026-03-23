@@ -13,7 +13,7 @@ import sys
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from rdl_mcp_server import MCPServer
+from rdl_mcp.server import MCPServer, mcp
 
 
 # Path to test fixtures
@@ -806,5 +806,42 @@ class TestErrorHandling:
         assert 'not found' in result['message']
 
 
-if __name__ == '__main__':
+class TestFastMCPServer:
+    """Tests verifying fastmcp tool registration."""
+
+    EXPECTED_TOOLS = {
+        'describe_rdl_report',
+        'get_rdl_datasets',
+        'get_rdl_parameters',
+        'get_rdl_columns',
+        'validate_rdl',
+        'update_column_header',
+        'update_column_width',
+        'update_column_format',
+        'update_column_colors',
+        'add_column',
+        'remove_column',
+        'update_stored_procedure',
+        'add_dataset_field',
+        'remove_dataset_field',
+        'add_parameter',
+        'update_parameter',
+    }
+
+    def _get_tools(self):
+        import asyncio
+        return asyncio.run(mcp.list_tools())
+
+    def test_all_tools_registered(self):
+        registered = {t.name for t in self._get_tools()}
+        assert self.EXPECTED_TOOLS == registered
+
+    def test_tool_has_description(self):
+        tools = {t.name: t for t in self._get_tools()}
+        assert tools['describe_rdl_report'].description
+
+    def test_tool_count(self):
+        assert len(self._get_tools()) == len(self.EXPECTED_TOOLS)
+
+
     pytest.main([__file__, '-v'])
