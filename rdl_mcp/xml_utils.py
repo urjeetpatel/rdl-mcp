@@ -31,7 +31,7 @@ def validate_filepath(filepath: str) -> str:
         raise ValueError("Only .rdl files are supported")
 
     if not os.path.isfile(resolved):
-        raise FileNotFoundError(f"File not found: {filepath}")
+        raise FileNotFoundError("File not found")
 
     return resolved
 

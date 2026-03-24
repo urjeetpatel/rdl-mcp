@@ -897,7 +897,7 @@ class TestSecurityPathTraversal:
         try:
             result = server.describe_rdl_report(temp_path)
             # Should not succeed with non-rdl file
-            assert False, "Expected an error for non-.rdl file"
+            pytest.fail("Expected an error for non-.rdl file")
         except ValueError as e:
             assert "Only .rdl files are supported" in str(e)
         finally:
@@ -907,7 +907,7 @@ class TestSecurityPathTraversal:
         """Verify that reading non-.rdl system files is blocked."""
         try:
             result = server.describe_rdl_report('/etc/passwd')
-            assert False, "Expected an error for non-.rdl file"
+            pytest.fail("Expected an error for non-.rdl file")
         except ValueError as e:
             assert "Only .rdl files are supported" in str(e)
 
@@ -930,7 +930,7 @@ class TestSecurityPathTraversal:
         """Verify that empty filepath is rejected."""
         try:
             server.describe_rdl_report('')
-            assert False, "Expected an error for empty filepath"
+            pytest.fail("Expected an error for empty filepath")
         except ValueError as e:
             assert "non-empty string" in str(e)
 
@@ -938,7 +938,7 @@ class TestSecurityPathTraversal:
         """Verify that None filepath is rejected."""
         try:
             server.describe_rdl_report(None)
-            assert False, "Expected an error for None filepath"
+            pytest.fail("Expected an error for None filepath")
         except (ValueError, TypeError):
             pass  # Either error type is acceptable
 

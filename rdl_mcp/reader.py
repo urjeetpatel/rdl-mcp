@@ -124,7 +124,7 @@ def get_rdl_datasets(filepath: str, field_limit: int = 0, field_pattern: Optiona
             try:
                 # Limit pattern length to prevent ReDoS (CWE-1333)
                 if len(field_pattern) > 200:
-                    logger.warning(f"field_pattern too long ({len(field_pattern)} chars), ignoring")
+                    logger.warning("field_pattern too long, ignoring")
                     filtered_fields = all_fields
                 else:
                     pattern_re = re.compile(field_pattern, re.IGNORECASE)
