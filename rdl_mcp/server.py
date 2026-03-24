@@ -155,12 +155,22 @@ class MCPServer:
                 }
             except Exception as e:
                 logger.error(f"Error executing tool {tool_name}: {e}")
+                error_msg = str(e)
+                # Sanitize error messages to avoid leaking internal paths (CWE-209)
+                if isinstance(e, FileNotFoundError):
+                    error_msg = "File not found"
+                elif isinstance(e, ValueError):
+                    error_msg = str(e)
+                elif isinstance(e, PermissionError):
+                    error_msg = "Permission denied"
+                else:
+                    error_msg = "An internal error occurred"
                 return {
                     'jsonrpc': '2.0',
                     'id': request_id,
                     'error': {
                         'code': -32000,
-                        'message': str(e)
+                        'message': error_msg
                     }
                 }
 

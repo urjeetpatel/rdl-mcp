@@ -15,6 +15,9 @@ setup(
     py_modules=["rdl_mcp_server"],
     packages=find_packages(),
     python_requires=">=3.8",
+    install_requires=[
+        "defusedxml>=0.7.1",
+    ],
     classifiers=[
         "Development Status :: 3 - Alpha",
         "Intended Audience :: Developers",

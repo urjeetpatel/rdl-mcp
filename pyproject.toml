@@ -9,6 +9,9 @@ description = "Edit SSRS reports using AI - MCP server for RDL files"
 readme = "README.md"
 requires-python = ">=3.8"
 license = { text = "MIT" }
+dependencies = [
+    "defusedxml>=0.7.1",
+]
 authors = [{ name = "Beth Maloney" }]
 classifiers = [
     "Development Status :: 3 - Alpha",

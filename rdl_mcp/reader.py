@@ -122,10 +122,15 @@ def get_rdl_datasets(filepath: str, field_limit: int = 0, field_pattern: Optiona
         # Apply field pattern filter
         if field_pattern:
             try:
-                pattern_re = re.compile(field_pattern, re.IGNORECASE)
-                filtered_fields = [f for f in all_fields if pattern_re.search(f['name'])]
+                # Limit pattern length to prevent ReDoS (CWE-1333)
+                if len(field_pattern) > 200:
+                    logger.warning(f"field_pattern too long ({len(field_pattern)} chars), ignoring")
+                    filtered_fields = all_fields
+                else:
+                    pattern_re = re.compile(field_pattern, re.IGNORECASE)
+                    filtered_fields = [f for f in all_fields if pattern_re.search(f['name'])]
             except re.error as e:
-                logger.warning(f"Invalid field_pattern regex: {field_pattern}, error: {e}")
+                logger.warning(f"Invalid field_pattern regex, error: {e}")
                 filtered_fields = all_fields
         else:
             filtered_fields = all_fields
