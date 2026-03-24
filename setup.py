@@ -17,6 +17,7 @@ setup(
     python_requires=">=3.8",
     install_requires=[
         "defusedxml>=0.7.1",
+        "fastmcp>=2.0",
     ],
     classifiers=[
         "Development Status :: 3 - Alpha",

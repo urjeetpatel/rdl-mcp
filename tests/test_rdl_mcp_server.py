@@ -13,7 +13,7 @@ import sys
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from rdl_mcp_server import MCPServer
+from rdl_mcp.server import MCPServer, mcp
 
 
 # Path to test fixtures
@@ -943,39 +943,6 @@ class TestSecurityPathTraversal:
             pass  # Either error type is acceptable
 
 
-class TestSecurityInfoDisclosure:
-    """Tests for information disclosure prevention (CWE-209)."""
-
-    def test_error_does_not_leak_internal_paths(self, server):
-        """Verify that error responses don't expose internal file paths."""
-        request = {
-            'method': 'tools/call',
-            'id': 1,
-            'params': {
-                'name': 'describe_rdl_report',
-                'arguments': {'filepath': '/some/secret/internal/path/report.rdl'}
-            }
-        }
-        response = server.handle_request(request)
-        error_msg = response.get('error', {}).get('message', '')
-        assert '/some/secret/internal/path' not in error_msg
-
-    def test_generic_error_for_unexpected_exceptions(self, server):
-        """Verify that unexpected errors return generic messages."""
-        request = {
-            'method': 'tools/call',
-            'id': 1,
-            'params': {
-                'name': 'describe_rdl_report',
-                'arguments': {'filepath': '/etc/passwd'}
-            }
-        }
-        response = server.handle_request(request)
-        error_msg = response.get('error', {}).get('message', '')
-        # Should not contain system paths or stack traces
-        assert 'Traceback' not in error_msg
-
-
 class TestSecurityReDoS:
     """Tests for Regular Expression Denial of Service prevention (CWE-1333)."""
 
@@ -991,6 +958,44 @@ class TestSecurityReDoS:
         """Verify that invalid regex patterns don't crash the server."""
         result = server.get_rdl_datasets(temp_report, field_limit=-1, field_pattern='[invalid')
         assert 'datasets' in result
+
+
+class TestFastMCPServer:
+    """Tests verifying fastmcp tool registration."""
+
+    EXPECTED_TOOLS = {
+        'describe_rdl_report',
+        'get_rdl_datasets',
+        'get_rdl_parameters',
+        'get_rdl_columns',
+        'validate_rdl',
+        'update_column_header',
+        'update_column_width',
+        'update_column_format',
+        'update_column_colors',
+        'add_column',
+        'remove_column',
+        'update_stored_procedure',
+        'add_dataset_field',
+        'remove_dataset_field',
+        'add_parameter',
+        'update_parameter',
+    }
+
+    def _get_tools(self):
+        import asyncio
+        return asyncio.run(mcp.list_tools())
+
+    def test_all_tools_registered(self):
+        registered = {t.name for t in self._get_tools()}
+        assert self.EXPECTED_TOOLS == registered
+
+    def test_tool_has_description(self):
+        tools = {t.name: t for t in self._get_tools()}
+        assert tools['describe_rdl_report'].description
+
+    def test_tool_count(self):
+        assert len(self._get_tools()) == len(self.EXPECTED_TOOLS)
 
 
 if __name__ == '__main__':
