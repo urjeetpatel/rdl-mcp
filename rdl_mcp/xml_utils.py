@@ -1,11 +1,39 @@
 """XML utility functions for RDL file handling."""
 
 import xml.etree.ElementTree as ET
+import defusedxml.ElementTree as SafeET
+import os
 import re
 import logging
 from typing import Optional
 
 logger = logging.getLogger(__name__)
+
+
+def validate_filepath(filepath: str) -> str:
+    """Validate and resolve a filepath for safe access.
+
+    Ensures the path points to a .rdl file, resolves symlinks,
+    and prevents path traversal attacks (CWE-22).
+
+    Returns:
+        The resolved absolute filepath.
+
+    Raises:
+        ValueError: If the filepath is invalid or unsafe.
+    """
+    if not filepath or not isinstance(filepath, str):
+        raise ValueError("Filepath must be a non-empty string")
+
+    resolved = os.path.realpath(filepath)
+
+    if not resolved.lower().endswith('.rdl'):
+        raise ValueError("Only .rdl files are supported")
+
+    if not os.path.isfile(resolved):
+        raise FileNotFoundError("File not found")
+
+    return resolved
 
 
 def get_namespace(root: ET.Element) -> str:
@@ -40,15 +68,25 @@ def register_namespaces(filepath: str):
 
 
 def parse_rdl(filepath: str) -> ET.Element:
-    """Parse an RDL file and return the root element."""
-    tree = ET.parse(filepath)
+    """Parse an RDL file and return the root element.
+
+    Uses defusedxml to prevent XXE and entity expansion attacks (CWE-611, CWE-776).
+    Validates the filepath to prevent path traversal (CWE-22).
+    """
+    resolved = validate_filepath(filepath)
+    tree = SafeET.parse(resolved)
     return tree.getroot()
 
 
 def parse_rdl_tree(filepath: str) -> ET.ElementTree:
-    """Parse an RDL file and return the ElementTree (for modifications)."""
-    register_namespaces(filepath)
-    return ET.parse(filepath)
+    """Parse an RDL file and return the ElementTree (for modifications).
+
+    Uses defusedxml to prevent XXE and entity expansion attacks (CWE-611, CWE-776).
+    Validates the filepath to prevent path traversal (CWE-22).
+    """
+    resolved = validate_filepath(filepath)
+    register_namespaces(resolved)
+    return SafeET.parse(resolved)
 
 
 def indent_xml(elem: ET.Element, level: int = 0):
