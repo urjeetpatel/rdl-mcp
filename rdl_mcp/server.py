@@ -1,20 +1,26 @@
 """MCP Server for RDL file operations."""
 
 import logging
-from typing import Dict, Any, Optional
+from typing import Any, Dict, List, Optional
 
 from fastmcp import FastMCP
 
-from . import reader
+from . import batch
 from . import columns
 from . import datasets
 from . import parameters
+from . import reader
+from . import styles
 from . import validation
 
 logger = logging.getLogger(__name__)
 
 mcp = FastMCP("rdl-mcp-server")
 
+
+# ---------------------------------------------------------------------------
+# Existing read tools
+# ---------------------------------------------------------------------------
 
 @mcp.tool
 def describe_rdl_report(filepath: str) -> Dict[str, Any]:
@@ -46,6 +52,10 @@ def validate_rdl(filepath: str) -> Dict[str, Any]:
     """Validate RDL XML structure and field references."""
     return validation.validate_rdl(filepath)
 
+
+# ---------------------------------------------------------------------------
+# Existing column mutation tools
+# ---------------------------------------------------------------------------
 
 @mcp.tool
 def update_column_header(filepath: str, old_header: str, new_header: str) -> Dict[str, Any]:
@@ -93,6 +103,10 @@ def remove_column(filepath: str, column_index: int,
     return columns.remove_column(filepath, column_index, auto_adjust_page_width)
 
 
+# ---------------------------------------------------------------------------
+# Existing dataset / parameter tools
+# ---------------------------------------------------------------------------
+
 @mcp.tool
 def update_stored_procedure(filepath: str, dataset_name: str, new_sproc: str) -> Dict[str, Any]:
     """Update the stored procedure for a dataset."""
@@ -124,6 +138,67 @@ def update_parameter(filepath: str, name: str, prompt: Optional[str] = None,
     """Update an existing report parameter."""
     return parameters.update_parameter(filepath, name, prompt, default_value)
 
+
+# ---------------------------------------------------------------------------
+# New batch + style + layout tools
+# ---------------------------------------------------------------------------
+
+@mcp.tool
+def update_table_batch(
+    filepath: str,
+    updates: List[Dict[str, Any]],
+    backup: bool = False,
+) -> Dict[str, Any]:
+    """Apply multiple column updates (width/header/colors/format/alignment) in one atomic write.
+
+    All changes are applied in-memory first; if any update fails the file is
+    not written (all-or-none).  Returns a mutation-response envelope including
+    a machine-readable before/after diff.
+
+    Each element of *updates* is a dict with ``column_index`` (int, required)
+    and any of: ``width``, ``header``, ``format_string``, ``text_color``,
+    ``background_color``, ``header_text_color``, ``header_background_color``,
+    ``alignment``, ``header_alignment``.
+
+    Set ``backup=True`` to save a timestamped ``.bak`` file before writing.
+    """
+    return batch.update_table_batch(filepath, updates, backup=backup)
+
+
+@mcp.tool
+def preview_table_batch(
+    filepath: str,
+    updates: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    """Preview what update_table_batch would do without modifying the file.
+
+    Returns the same diff structure as update_table_batch with dry_run=True.
+    The file is never written.
+    """
+    return batch.preview_table_batch(filepath, updates)
+
+
+@mcp.tool
+def get_column_styles(filepath: str) -> Dict[str, Any]:
+    """Get effective style properties for every column (colors, format, alignment)."""
+    return styles.get_column_styles(filepath)
+
+
+@mcp.tool
+def get_table_styles(filepath: str) -> Dict[str, Any]:
+    """Get table-level style properties (border, background, font defaults)."""
+    return styles.get_table_styles(filepath)
+
+
+@mcp.tool
+def get_layout_diagnostics(filepath: str) -> Dict[str, Any]:
+    """Get layout diagnostics: page size, margins, tablix width, and overflow/fit status."""
+    return styles.get_layout_diagnostics(filepath)
+
+
+# ---------------------------------------------------------------------------
+# MCPServer wrapper (backward-compatible)
+# ---------------------------------------------------------------------------
 
 class MCPServer:
     """Thin wrapper around RDL operations, kept for backward compatibility."""
@@ -189,6 +264,24 @@ class MCPServer:
                          default_value: Optional[str] = None) -> Dict[str, Any]:
         return parameters.update_parameter(filepath, name, prompt, default_value)
 
+    # --- new tools ---
+
+    def update_table_batch(self, filepath: str, updates: List[Dict[str, Any]],
+                           backup: bool = False) -> Dict[str, Any]:
+        return batch.update_table_batch(filepath, updates, backup=backup)
+
+    def preview_table_batch(self, filepath: str, updates: List[Dict[str, Any]]) -> Dict[str, Any]:
+        return batch.preview_table_batch(filepath, updates)
+
+    def get_column_styles(self, filepath: str) -> Dict[str, Any]:
+        return styles.get_column_styles(filepath)
+
+    def get_table_styles(self, filepath: str) -> Dict[str, Any]:
+        return styles.get_table_styles(filepath)
+
+    def get_layout_diagnostics(self, filepath: str) -> Dict[str, Any]:
+        return styles.get_layout_diagnostics(filepath)
+
     def _extract_field_references_with_context(self, expression: str, default_dataset: str) -> Dict[str, Any]:
         return validation.extract_field_references_with_context(expression, default_dataset)
 
@@ -199,4 +292,5 @@ class MCPServer:
 def run_server():
     """Run the MCP server."""
     mcp.run()
+
 
